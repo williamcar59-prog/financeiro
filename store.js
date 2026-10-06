@@ -190,9 +190,15 @@
       persist();
       return item;
     },
-    /* cria N parcelas vinculadas (mês a mês) */
-    addInstallments(base, n) {
+    /* cria N parcelas vinculadas (mês a mês).
+       start = número da primeira parcela a criar; total = total do contrato.
+       Ex.: 12x com 3 já pagas → addInstallments(base, 9, 4, 12)
+       cria da 4/12 até a 12/12, sem tocar nos meses já quitados. */
+    addInstallments(base, n, start, total) {
       const gid = "g_" + Store.uid();
+      const ini = Math.max(1, Number(start) || 1);
+      const fim = ini + Math.max(1, n) - 1;
+      const tot = Number(total) >= fim ? Number(total) : fim;
       const [y, m] = base.date.slice(0, 7).split("-").map(Number);
       const created = [];
       for (let i = 0; i < n; i++) {
@@ -202,7 +208,7 @@
           Store.addTx(
             Object.assign({}, base, {
               date: iso,
-              group: { gid, n: i + 1, total: n }
+              group: { gid, n: ini + i, total: tot }
             })
           )
         );

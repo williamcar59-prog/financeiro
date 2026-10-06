@@ -75,14 +75,14 @@ Abra esse endereço no **PC primeiro** para conferir que carregou.
 ### Atualizar o app depois
 
 1. Antes de publicar, **suba a versão** nos dois arquivos (mesmo número):
-   - `app.js` → `APP_VERSION = "1.3.0"` e `BUILD_DATE = "06/10/2026"`
-   - `sw.js` → `const VERSION = "1.3.0"`
+   - `app.js` → `APP_VERSION = "1.4.0"` e `BUILD_DATE = "06/10/2026"`
+   - `sw.js` → `const VERSION = "1.4.0"`
 2. Repita o passo 2 (arrastar os arquivos novos → Commit changes).
    Em ~1 minuto o site atualiza.
 3. No celular, feche e abra o app (ou toque em **🔄 Verificar atualização**
    nos Ajustes) para pegar a versão nova.
 
-O número da versão aparece no topo do Painel (`.v1.3.0`) e no fim dos
+O número da versão aparece no topo do Painel (`.v1.4.0`) e no fim dos
 **Ajustes**. Quando sair versão nova, uma faixa "⬆️ Nova versão disponível"
 aparece sozinha no rodapé do app.
 
@@ -110,11 +110,12 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber |
 | 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
-| 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) |
+| 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
+| 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
 | 👥 Terceiros | Quem comprou **com o seu cartão**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
-| 🔁 Contas fixas | Aluguel, luz, internet e assinaturas: cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
+| 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
 | 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
 | ⚙️ Ajustes | Categorias próprias, **backup exportar/importar (.json)**, saldo inicial, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
@@ -153,6 +154,46 @@ Como o app se protege:
   antes, e o conselho é exportar primeiro (assim nada se perde);
 - arquivos que não sejam backup deste app são **recusados** — não dá para
   importar um arquivo errado sem querer.
+
+---
+
+## 📈 Novidades da v1.4.0
+
+### Compra parcelada antiga — campo **"Já paguei"**
+
+Quando o destino é **cartão** e você escolhe mais de 1 parcela, aparece o campo
+**Já paguei**. Ele serve para compra antiga: 12x com 3 pagas → o app **cria só
+da 4/12 até a 12/12** (os meses quitados não viram lançamento e nada fica
+vermelho no histórico).
+
+**Como ficar com o caixa certo** — regra única do app:
+
+> Caixa = Saldo inicial + (todas as entradas − todas as saídas), de qualquer data.
+
+- **Caminho simples (recomendado):** ⚙️ Ajustes → Saldo inicial = o dinheiro que
+  você tem **hoje**; lance a compra com **data de hoje** e as parcelas
+  **restantes**. O passado fica vazio e o caixa bate com a realidade.
+- **Caminho histórico:** só se você refizer também os 3 meses anteriores
+  (entradas e saídas). Se lançar as parcelas de trás **sem** refazer os meses,
+  o caixa é descontado duas vezes e fica baixo demais.
+
+### 📈 Onde entrou o dinheiro (Relatórios)
+
+Novo bloco em **Relatórios** com as entradas do mês por categoria e o %
+do total: `📈 Rendimentos · R$ 87,30 · 4%` — é o jeito de ver quanto o
+cofrinho rendeu sem somar na mão.
+
+### 🔁 Contas fixas também para entrada
+
+**Lançamentos → 🔁 Contas fixas** agora tem o seletor **↓ Saída / ↑ Entrada**:
+salário e rendimento fixo podem ser criados sozinhos todo mês, no dia escolhido.
+
+### Cofrinho (Itaú Cofrinho / Nubank Caixinha) — o que lançar
+
+- ❌ **Não lance** aplicação nem resgate: mover dinheiro para o cofrinho não é
+  gasto, o dinheiro continua seu (o app tem um caixa só);
+- ✅ **Lance só o rendimento como entrada**, categoria **📈 Rendimentos**, no mês
+  em que o banco creditar — ele aparece em Entradas e no ranking acima.
 
 ---
 

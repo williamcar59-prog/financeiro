@@ -640,3 +640,6 @@ button {
 .lock-rec-form .btn { flex: none; }
 .rec-code { text-align: center; font-size: 30px; font-weight: 800; letter-spacing: 7px; color: var(--brand-d); background: var(--brand-soft); border: 1px dashed var(--brand); border-radius: 14px; padding: 16px 10px; margin: 6px 0 4px; }
 .btn.small { padding: 10px 14px; font-size: 13.5px; }
+
+/* v1.4.0 — entradas por categoria no relatório */
+.cat-row.cat-in .track > i { background: var(--in); }

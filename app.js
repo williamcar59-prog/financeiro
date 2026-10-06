@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.3.0";
+  const APP_VERSION = "1.4.0";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -373,7 +373,8 @@
         ? '<div class="card pad0">' + recs.map(recRow).join("") + "</div>" +
           '<div class="orc-dica" style="margin-top:-4px">Criadas sozinhas todo mês, no dia marcado.</div>'
         : '<div class="card"><p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
-          "Aluguel, luz, internet e assinaturas: cadastre uma vez e o app lança sozinho todo mês, sem você esquecer.</p>" +
+          "Aluguel, luz, internet, assinaturas — e também o que <b>entra</b> todo mês " +
+          "(salário, rendimento do cofrinho): cadastre uma vez e o app lança sozinho, sem você esquecer.</p>" +
           '<button class="btn ghost" data-act="new-rec">＋ Adicionar conta fixa</button></div>')
     );
   }
@@ -419,19 +420,24 @@
 
     openSheet(
       "<h2>🔁 Nova conta fixa</h2>" +
-      '<p class="sheet-intro">Todo mês, no dia escolhido, o app cria o lançamento sozinho.</p>' +
+      '<p class="sheet-intro">Todo mês, no dia escolhido, o app cria o lançamento sozinho ' +
+      "— pode ser saída (aluguel, assinaturas) ou entrada (salário, rendimento).</p>" +
       '<form data-form="rec">' +
+      '<div class="seg">' +
+      '<label class="s-out"><input type="radio" name="type" value="out" checked><span>↓ Saída</span></label>' +
+      '<label class="s-in"><input type="radio" name="type" value="in"><span>↑ Entrada</span></label>' +
+      "</div>" +
       '<div class="field"><label>Valor</label><div class="amount-wrap"><span class="cur">R$</span>' +
       '<input name="amount" inputmode="decimal" placeholder="0,00" required></div></div>' +
       '<div class="field"><label>Nome / descrição</label>' +
-      '<input name="note" placeholder="Ex.: Aluguel, Conta de luz, Netflix..."></div>' +
+      '<input name="note" placeholder="Ex.: Aluguel, Salário, Netflix..."></div>' +
       '<div class="row2">' +
       '<div class="field"><label>Dia do mês</label>' +
       '<input name="day" type="number" min="1" max="31" value="5" required></div>' +
       '<div class="field"><label>Categoria</label><select name="catId">' +
       catOptions("out", "out_moradia") + "</select></div>" +
       "</div>" +
-      '<div class="field"><label>Pago com</label><select name="dest">' + destOpts + "</select></div>" +
+      '<div class="field"><label>Conta ou cartão</label><select name="dest">' + destOpts + "</select></div>" +
       '<div class="form-actions">' +
       '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
       '<button class="btn" type="submit">Criar conta fixa</button></div></form>'
@@ -644,6 +650,33 @@
     const biggest = list.slice().sort((a, b) => b.amount - a.amount)[0];
     const tdOpen = Store.thirdOpenSum();
 
+    /* de onde veio o dinheiro (entradas por categoria) */
+    const listIn = Store.txOfMonth(cur).filter((t) => t.type === "in");
+    const totalIn = listIn.reduce((s, t) => s + t.amount, 0);
+    const byIn = {};
+    listIn.forEach((t) => (byIn[t.catId] = (byIn[t.catId] || 0) + t.amount));
+    const catsIn = Object.keys(byIn)
+      .map((id) => ({ id, v: byIn[id] }))
+      .sort((a, b) => b.v - a.v);
+    const entHtml = catsIn.length
+      ? '<div class="sec-title">Onde entrou o dinheiro em ' + esc(monthLabel(cur)) + "</div>" +
+        '<div class="card">' +
+        catsIn
+          .map((c) => {
+            const pct = totalIn ? Math.round((c.v / totalIn) * 100) : 0;
+            return (
+              '<div class="cat-row cat-in"><div class="top-l"><b><span class="bar-ico">' +
+              catIcon(c.id) +
+              "</span>" + esc(catName(c.id)) +
+              "</b><span>" + fmt(c.v) + " · " + pct + "%</span></div>" +
+              '<div class="track"><i style="width:' + pct + '%"></i></div></div>'
+            );
+          })
+          .join("") +
+        '<div class="orc-dica">Total recebido no mês: <b>' + fmt(totalIn) + "</b></div>" +
+        "</div>"
+      : "";
+
     /* limites por categoria */
     const orcamentos = Store.budgetStatus(cur);
     const orcHtml = orcamentos.length
@@ -667,6 +700,7 @@
       ' <button data-act="budgets">🎯 limites</button></div>' +
       '<div class="card">' + catHtml + "</div>" +
 
+      entHtml +
       orcHtml +
 
       '<div class="sec-title">Resumo</div>' +
@@ -716,7 +750,11 @@
         Array.from({ length: 24 }, (_, i) => i + 1)
           .map((n) => '<option value="' + n + '"' + (n === 1 ? " selected" : "") + ">" + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>")
           .join("") +
-        '</select><div class="hint">Cada parcela vira um lançamento no mês correspondente.</div></div>';
+        '</select><div class="hint">Cada parcela vira um lançamento no mês correspondente.</div></div>' +
+        '<div class="field" id="paidField" hidden><label>Já paguei</label>' +
+        '<input name="paid" type="number" min="0" max="23" inputmode="numeric" value="0">' +
+        '<div class="hint">Compra antiga? As parcelas quitadas não geram lançamento ' +
+        "— ex.: 12x com 3 pagas cria só da <b>4/12</b> até a <b>12/12</b>.</div></div>";
 
     openSheet(
       '<h2>' + (t ? "Editar lançamento" : "Novo lançamento") + "</h2>" +
@@ -756,13 +794,22 @@
       .join("");
   }
 
-  /* mostra/esconde parcelas conforme destino (cartão) */
+  /* mostra/esconde parcelas e "já paguei" conforme destino/tipo */
   function syncDest() {
     const form = $("#modal-root form");
     if (!form) return;
     const dest = form.dest;
+    const tipo = form.querySelector('[name="type"]:checked');
+    const saida = !tipo || tipo.value === "out";
+    const noCartao = !!dest && (dest.value || "").startsWith("card:");
     const parc = $("#parcField", form);
-    if (dest && parc) parc.hidden = !(dest.value || "").startsWith("card:");
+    const verParc = noCartao && saida;
+    if (parc) parc.hidden = !verParc;
+    const pago = $("#paidField", form);
+    if (pago) {
+      const n = Number(form.installments ? form.installments.value : 1) || 1;
+      pago.hidden = !(verParc && n > 1);
+    }
   }
 
   /* =====================================================================
@@ -1400,6 +1447,7 @@
       }
     }
     if (e.target.name === "dest") syncDest();
+    if (e.target.name === "installments" || e.target.name === "type") syncDest();
   });
 
   document.addEventListener("click", (e) => {
@@ -1433,11 +1481,12 @@
       if (amount <= 0) return toast("Informe o valor");
       const dest = String(fd.get("dest") || "");
       const isCard = dest.indexOf("card:") === 0;
+      const tipo = fd.get("type") === "in" ? "in" : "out";
       Store.addRec({
-        type: "out",
+        type: tipo,
         amount,
         day: Math.min(31, Math.max(1, Number(fd.get("day")) || 1)),
-        catId: fd.get("catId") || "out_outros",
+        catId: fd.get("catId") || (tipo === "in" ? "in_salario" : "out_outros"),
         note: String(fd.get("note") || "").trim(),
         cardId: isCard ? dest.slice(5) : null,
         accId: isCard ? null : dest.slice(4) || null,
@@ -1519,10 +1568,18 @@
       Store.updateTx(id, base);
       toast("Lançamento atualizado");
     } else {
-      const n = isCard && base.type === "out" ? Math.max(1, Number(fd.get("installments")) || 1) : 1;
-      if (n > 1) {
-        Store.addInstallments(base, n);
-        toast(n + "x parcela criada");
+      const total =
+        isCard && base.type === "out" ? Math.max(1, Number(fd.get("installments")) || 1) : 1;
+      const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
+      const restam = total - pagas;
+      if (total > 1) {
+        if (restam <= 0)
+          return toast("Todas as " + total + " parcelas já foram pagas — nada a lançar");
+        Store.addInstallments(base, restam, pagas + 1, total);
+        toast(
+          restam + "x parcela criada" +
+            (pagas ? " · da " + (pagas + 1) + "/" + total : "")
+        );
       } else {
         Store.addTx(base);
         toast("Lançamento adicionado");
