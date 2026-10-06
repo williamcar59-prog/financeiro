@@ -75,14 +75,14 @@ Abra esse endereço no **PC primeiro** para conferir que carregou.
 ### Atualizar o app depois
 
 1. Antes de publicar, **suba a versão** nos dois arquivos (mesmo número):
-   - `app.js` → `APP_VERSION = "1.1.0"` e `BUILD_DATE = "06/10/2026"`
-   - `sw.js` → `const VERSION = "1.1.0"`
+   - `app.js` → `APP_VERSION = "1.3.0"` e `BUILD_DATE = "06/10/2026"`
+   - `sw.js` → `const VERSION = "1.3.0"`
 2. Repita o passo 2 (arrastar os arquivos novos → Commit changes).
    Em ~1 minuto o site atualiza.
 3. No celular, feche e abra o app (ou toque em **🔄 Verificar atualização**
    nos Ajustes) para pegar a versão nova.
 
-O número da versão aparece no topo do Painel (`.v1.1.0`) e no fim dos
+O número da versão aparece no topo do Painel (`.v1.3.0`) e no fim dos
 **Ajustes**. Quando sair versão nova, uma faixa "⬆️ Nova versão disponível"
 aparece sozinha no rodapé do app.
 
@@ -113,7 +113,10 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) |
 | 👥 Terceiros | Quem comprou **com o seu cartão**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
-| ⚙️ Ajustes | Categorias próprias, **backup exportar/importar (.json)**, saldo inicial, verificar atualização |
+| 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
+| 🔁 Contas fixas | Aluguel, luz, internet e assinaturas: cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
+| 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
+| ⚙️ Ajustes | Categorias próprias, **backup exportar/importar (.json)**, saldo inicial, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
 ### A regra de ouro dos "terceiros"
@@ -155,9 +158,11 @@ Como o app se protege:
 
 ## Próximas fases
 
+- ~~**Fase 3 — Ajustes finos:** metas por categoria, lembrete de vencimento,
+  recorrências fixas (aluguel/assinaturas).~~ ✅ **Feito na v1.3.0**
+  (orçamento por categoria, contas fixas, lembrete de fatura e bloqueio por PIN).
 - **Fase 2 — Nuvem com login:** Supabase (autenticação + banco) para sincronizar
   entre dispositivos. A camada `store.js` já está isolada: só `persist()` e
   `Store.init()` mudam — o resto do app não mexe.
-- **Fase 3 — Ajustes finos:** metas por categoria, lembrete de vencimento,
-  recorrências fixas (aluguel/assinaturas).
-- **Fase 4 — Polimento:** ícone PNG 512×512 e sombras/bordas por aparelho.
+- **Fase 4 — Polimento:** ícone PNG 512×512, saldo por conta (Pix/poupança),
+  busca de lançamentos, importar extrato do banco (.OFX).

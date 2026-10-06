@@ -42,6 +42,8 @@
       categories: DEFAULT_CATS.slice(),
       transactions: [],
       third: [],
+      budgets: {},
+      recurrences: [],
       settings: { initialBalance: 0 },
       createdAt: new Date().toISOString()
     };
@@ -70,6 +72,8 @@
       }
       if (!db.categories) db.categories = DEFAULT_CATS.slice();
       if (!db.settings) db.settings = { initialBalance: 0 };
+      if (!db.budgets || typeof db.budgets !== "object") db.budgets = {};
+      if (!Array.isArray(db.recurrences)) db.recurrences = [];
       return db;
     },
 
@@ -348,6 +352,164 @@
       return Store.sumOut(Store.txOfMonth(mk));
     },
 
+    /* ---------- ORÇAMENTO (limite por categoria no mês) ---------- */
+    budgets() {
+      const d = Store.init();
+      if (!d.budgets || typeof d.budgets !== "object") d.budgets = {};
+      return d.budgets;
+    },
+    setBudgets(map) {
+      Store.budgets();
+      Store.data.budgets = map || {};
+      persist();
+    },
+    /* quanto já foi gasto no mês (saídas) */
+    spentInMonth(mk, catId) {
+      return Store.txOfMonth(mk)
+        .filter((t) => t.type === "out" && (!catId || t.catId === catId))
+        .reduce((s, t) => s + t.amount, 0);
+    },
+    /* situação dos limites num mês: [{catId, limite, gasto, pct, estourou}] */
+    budgetStatus(mk) {
+      const b = Store.budgets();
+      return Object.keys(b)
+        .filter((id) => b[id] > 0)
+        .map((id) => {
+          const limite = b[id];
+          const gasto = Store.spentInMonth(mk, id);
+          return {
+            catId: id,
+            limite,
+            gasto,
+            pct: Math.max(0, Math.min(100, Math.round((gasto / limite) * 100))),
+            faltou: limite - gasto,
+            estourou: gasto > limite
+          };
+        })
+        .sort((a, c) => c.gasto / c.limite - a.gasto / a.limite);
+    },
+
+    /* ---------- CONTAS FIXAS (recorrências) ---------- */
+    recurrences() {
+      const d = Store.init();
+      if (!Array.isArray(d.recurrences)) d.recurrences = [];
+      return d.recurrences;
+    },
+    rec(id) {
+      return Store.recurrences().find((r) => r.id === id) || null;
+    },
+    addRec(o) {
+      const item = Object.assign(
+        {
+          id: "rec_" + Store.uid(),
+          type: "out",
+          amount: 0,
+          day: 1,
+          catId: "out_outros",
+          note: "",
+          cardId: null,
+          accId: null,
+          start: new Date().toISOString().slice(0, 7),
+          active: true
+        },
+        o
+      );
+      Store.recurrences().push(item);
+      persist();
+      return item;
+    },
+    removeRec(id) {
+      const l = Store.recurrences();
+      const i = l.findIndex((r) => r.id === id);
+      if (i > -1) l.splice(i, 1);
+      persist();
+    },
+    /* cria sozinho os lançamentos das contas fixas até a data informada.
+       Só gera o mês atual quando o dia já chegou — nada de data futura. */
+    syncRecs(iso) {
+      const hoje = iso || new Date().toISOString().slice(0, 10);
+      const mkAtual = hoje.slice(0, 7);
+      const criados = [];
+      Store.recurrences().forEach((rec) => {
+        if (rec.active === false || !(rec.amount > 0)) return;
+        const inicio = rec.start || mkAtual;
+        if (inicio > mkAtual) return;
+        let mk = inicio;
+        let guarda = 0;
+        while (mk <= mkAtual && guarda++ < 120) {
+          const p = mk.split("-").map(Number);
+          const diasNoMes = new Date(p[0], p[1], 0).getDate();
+          const dia = Math.min(Number(rec.day) || 1, diasNoMes);
+          const data = mk + "-" + String(dia).padStart(2, "0");
+          const devido = mk < mkAtual || data <= hoje;
+          const jaTem = Store.data.transactions.some(
+            (t) => t.rec === rec.id && t.date.slice(0, 7) === mk
+          );
+          if (devido && !jaTem) {
+            criados.push(
+              Store.addTx({
+                type: rec.type || "out",
+                amount: rec.amount,
+                date: data,
+                catId: rec.catId,
+                note: rec.note,
+                cardId: rec.cardId || null,
+                accId: rec.accId || null,
+                rec: rec.id
+              })
+            );
+          }
+          const nm = p[1] === 12 ? 1 : p[1] + 1;
+          const ny = p[1] === 12 ? p[0] + 1 : p[0];
+          mk = ny + "-" + String(nm).padStart(2, "0");
+        }
+      });
+      return criados;
+    },
+
+    /* ---------- BLOQUEIO (PIN) ---------- */
+    pinAtivo() {
+      return !!Store.settings().pin;
+    },
+    async hashPin(pin) {
+      const txt = "fin-pin:" + String(pin);
+      if (self.crypto && crypto.subtle && crypto.subtle.digest) {
+        try {
+          const h = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(txt)
+          );
+          return Array.from(new Uint8Array(h))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        } catch (e) {
+          /* cai no fallback */
+        }
+      }
+      /* fallback simples onde não existe crypto.subtle */
+      let h = 5381;
+      for (let i = 0; i < txt.length; i++) h = ((h << 5) + h + txt.charCodeAt(i)) >>> 0;
+      return "fb" + h.toString(16);
+    },
+    async setPin(pin) {
+      const s = Store.settings();
+      s.pin = await Store.hashPin(pin);
+      s.pinLen = String(pin).length;
+      persist();
+    },
+    async checkPin(pin) {
+      const s = Store.settings();
+      if (!s.pin) return true;
+      return (await Store.hashPin(pin)) === s.pin;
+    },
+    clearPin() {
+      const s = Store.settings();
+      delete s.pin;
+      delete s.pinLen;
+      delete s.cred;
+      persist();
+    },
+
     /* ---------- backup ---------- */
     /* resumo do que existe hoje (para mostrar antes de exportar/importar) */
     stats() {
@@ -355,7 +517,8 @@
       return {
         tx: (d.transactions || []).length,
         cards: (d.cards || []).length,
-        third: (d.third || []).length
+        third: (d.third || []).length,
+        recs: (d.recurrences || []).length
       };
     },
     markBackup() {
@@ -381,6 +544,9 @@
       if (!Array.isArray(parsed.categories)) parsed.categories = DEFAULT_CATS.slice();
       if (!parsed.settings || typeof parsed.settings !== "object") parsed.settings = { initialBalance: 0 };
       if (typeof parsed.settings.initialBalance !== "number") parsed.settings.initialBalance = 0;
+      if (!parsed.budgets || typeof parsed.budgets !== "object" || Array.isArray(parsed.budgets))
+        parsed.budgets = {};
+      if (!Array.isArray(parsed.recurrences)) parsed.recurrences = [];
       db = parsed;
       persist();
       return {

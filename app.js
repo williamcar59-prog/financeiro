@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.2.0";
+  const APP_VERSION = "1.3.0";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -310,7 +310,8 @@
       chip("in", "Entradas", state.txFilter, "tx") +
       chip("out", "Saídas", state.txFilter, "tx") +
       "</div>" +
-      body
+      body +
+      recsSection()
     );
   }
 
@@ -342,6 +343,98 @@
       '<div class="row-val ' + (t.type === "in" ? "in" : "out") + '">' +
       (t.type === "in" ? "+" : "−") + fmt(t.amount) +
       "</div></button>"
+    );
+  }
+
+  /* linha de um limite no relatório */
+  function orcRow(o) {
+    const cor = o.estourou ? "var(--out)" : o.pct >= 80 ? "var(--warn)" : "var(--brand)";
+    const cls = o.estourou ? "estourou" : o.pct >= 80 ? "quase" : "";
+    const texto = o.estourou
+      ? "⚠️ Estourou " + fmt(o.gasto - o.limite)
+      : "Faltam " + fmt(o.faltou);
+    return (
+      '<div class="cat-row orc"><div class="top-l">' +
+      '<b><span class="bar-ico">' + catIcon(o.catId) + "</span>" + esc(catName(o.catId)) + "</b>" +
+      '<span class="orc-valor ' + cls + '">' + fmt(o.gasto) + " / " + fmt(o.limite) + "</span></div>" +
+      '<div class="track"><i style="width:' + o.pct + "%;background:" + cor + '"></i></div>' +
+      '<div class="orc-dica ' + cls + '">' + texto + " · " + o.pct + "% do limite</div>" +
+      "</div>"
+    );
+  }
+
+  /* ---------------- contas fixas ---------------- */
+  function recsSection() {
+    const recs = Store.recurrences();
+    return (
+      '<div class="sec-title">🔁 Contas fixas ' +
+      '<button data-act="new-rec">' + (recs.length ? "＋ adicionar" : "cadastrar") + "</button></div>" +
+      (recs.length
+        ? '<div class="card pad0">' + recs.map(recRow).join("") + "</div>" +
+          '<div class="orc-dica" style="margin-top:-4px">Criadas sozinhas todo mês, no dia marcado.</div>'
+        : '<div class="card"><p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
+          "Aluguel, luz, internet e assinaturas: cadastre uma vez e o app lança sozinho todo mês, sem você esquecer.</p>" +
+          '<button class="btn ghost" data-act="new-rec">＋ Adicionar conta fixa</button></div>')
+    );
+  }
+
+  function recRow(r) {
+    const c = r.cardId ? Store.card(r.cardId) : null;
+    return (
+      '<div class="rec-item">' +
+      '<div class="row-ico">' + catIcon(r.catId) + "</div>" +
+      '<div class="row-mid"><div class="t">' + esc(r.note || catName(r.catId)) + "</div>" +
+      '<div class="s">todo dia ' + r.day +
+      (c ? '<span class="pill card-pill">' + esc(c.name) + "</span>" : "") +
+      "</div></div>" +
+      '<div class="row-val ' + (r.type === "in" ? "in" : "out") + '">' +
+      (r.type === "in" ? "+" : "−") + fmt(r.amount) + "</div>" +
+      '<button class="rec-del" data-act="del-rec" data-id="' + r.id + '" aria-label="Remover conta fixa">×</button>' +
+      "</div>"
+    );
+  }
+
+  function recSheet() {
+    const cats = Store.categories().filter(
+      (c) => !(c.id.indexOf("in_") === 0 || c.kind === "in")
+    );
+    const cards = Store.cards();
+    const destOpts =
+      '<optgroup label="Contas">' +
+      Store.accounts()
+        .map((a) => '<option value="acc:' + a.id + '">' + esc(a.name) + "</option>")
+        .join("") +
+      "</optgroup>" +
+      (cards.length
+        ? '<optgroup label="Cartões de crédito">' +
+          cards
+            .map(
+              (c) =>
+                '<option value="card:' + c.id + '">' + esc(c.name) +
+                (c.final ? " •" + esc(c.final) : "") + "</option>"
+            )
+            .join("") +
+          "</optgroup>"
+        : "");
+
+    openSheet(
+      "<h2>🔁 Nova conta fixa</h2>" +
+      '<p class="sheet-intro">Todo mês, no dia escolhido, o app cria o lançamento sozinho.</p>' +
+      '<form data-form="rec">' +
+      '<div class="field"><label>Valor</label><div class="amount-wrap"><span class="cur">R$</span>' +
+      '<input name="amount" inputmode="decimal" placeholder="0,00" required></div></div>' +
+      '<div class="field"><label>Nome / descrição</label>' +
+      '<input name="note" placeholder="Ex.: Aluguel, Conta de luz, Netflix..."></div>' +
+      '<div class="row2">' +
+      '<div class="field"><label>Dia do mês</label>' +
+      '<input name="day" type="number" min="1" max="31" value="5" required></div>' +
+      '<div class="field"><label>Categoria</label><select name="catId">' +
+      catOptions("out", "out_moradia") + "</select></div>" +
+      "</div>" +
+      '<div class="field"><label>Pago com</label><select name="dest">' + destOpts + "</select></div>" +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn" type="submit">Criar conta fixa</button></div></form>'
     );
   }
 
@@ -551,6 +644,13 @@
     const biggest = list.slice().sort((a, b) => b.amount - a.amount)[0];
     const tdOpen = Store.thirdOpenSum();
 
+    /* limites por categoria */
+    const orcamentos = Store.budgetStatus(cur);
+    const orcHtml = orcamentos.length
+      ? '<div class="sec-title">🎯 Orçamento de ' + esc(monthLabel(cur)) + "</div>" +
+        '<div class="card">' + orcamentos.map(orcRow).join("") + "</div>"
+      : "";
+
     return (
       '<div class="top"><div><h1>Relatórios</h1><div class="sub">Últimos 6 meses</div></div>' +
       monthNav() + "</div>" +
@@ -563,8 +663,11 @@
       mini("👥", "A receber", fmt(tdOpen), "warn") +
       "</div>" +
 
-      '<div class="sec-title">Onde foi o dinheiro em ' + esc(monthLabel(cur)) + "</div>" +
+      '<div class="sec-title">Onde foi o dinheiro em ' + esc(monthLabel(cur)) +
+      ' <button data-act="budgets">🎯 limites</button></div>' +
       '<div class="card">' + catHtml + "</div>" +
+
+      orcHtml +
 
       '<div class="sec-title">Resumo</div>' +
       '<div class="card stat-list">' +
@@ -759,7 +862,7 @@
       '<div class="sec-title">Backup dos seus dados</div>' +
       '<div class="card bk">' +
       '<div class="bk-resumo">📦 ' + st.tx + " lançamento(s) · " + st.cards + " cartão(ões) · " +
-      st.third + " pessoa(s)</div>" +
+      st.third + " pessoa(s)" + (st.recs ? " · 🔁 " + st.recs + " conta(s) fixa(s)" : "") + "</div>" +
       '<div class="bk-ultimo' + (velho && (st.tx || st.cards || st.third) ? " warn" : "") + '">' +
       "Último export: " + quando + " <span>(" + idade + ")</span></div>" +
       '<div class="bk-btns">' +
@@ -772,6 +875,118 @@
     );
   }
 
+  /* folha de limites por categoria */
+  function budgetsSheet() {
+    const b = Store.budgets();
+    const cats = Store.categories().filter(
+      (c) => !(c.id.indexOf("in_") === 0 || c.kind === "in")
+    );
+    const linhas = cats
+      .map((c) => {
+        const v = b[c.id] || 0;
+        return (
+          '<div class="field orc-linha"><label>' + c.icon + " " + esc(c.name) + "</label>" +
+          '<div class="amount-wrap"><span class="cur">R$</span>' +
+          '<input name="b_' + c.id + '" inputmode="decimal" placeholder="Sem limite" value="' +
+          (v ? (v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
+          '"></div></div>'
+        );
+      })
+      .join("");
+
+    openSheet(
+      "<h2>🎯 Orçamento por categoria</h2>" +
+      '<p class="sheet-intro">Quanto você quer gastar por mês em cada categoria? ' +
+      "Quando chegar perto do limite, o app avisa. Deixe em branco o que não quiser controlar.</p>" +
+      '<form data-form="budgets">' + linhas +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn" type="submit">Salvar limites</button></div></form>'
+    );
+  }
+
+  function pinSheet(trocando) {
+    openSheet(
+      (trocando ? "<h2>Trocar PIN</h2>" : "<h2>🔒 Ativar bloqueio</h2>") +
+      '<p class="sheet-intro">Escolha um PIN de 4 a 6 números. É ele que será pedido toda vez que alguém abrir o app.</p>' +
+      '<form data-form="pin">' +
+      '<div class="row2">' +
+      '<div class="field"><label>Novo PIN</label>' +
+      '<input name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="new-password" required></div>' +
+      '<div class="field"><label>Repita o PIN</label>' +
+      '<input name="pin2" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="new-password" required></div>' +
+      "</div>" +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn" type="submit">' + (trocando ? "Salvar PIN" : "Ativar bloqueio") + "</button>" +
+      "</div></form>"
+    );
+  }
+
+  /* mostra o código de recuperação logo após ativar o bloqueio */
+  function codigoSheet() {
+    const cod = Store.settings().recCode || "";
+    openSheet(
+      "<h2>📌 Anote seu código de recuperação</h2>" +
+      '<p class="sheet-intro">Se você esquecer o PIN, é com este código que entra. ' +
+      "Guarde em um lugar seguro — anote no papel ou mande para você mesmo (WhatsApp/Drive).</p>" +
+      '<div class="rec-code">' + esc(cod) + "</div>" +
+      '<div class="form-actions"><button class="btn" data-act="close-modal">Já anotei</button></div>'
+    );
+  }
+
+  /* seção do bloqueio dentro dos Ajustes */
+  function lockSection() {
+    const s = Store.settings();
+    const ativo = Store.pinAtivo();
+    const temCred = !!s.cred;
+    const bioOk = state.bioDisp === true && "credentials" in navigator;
+
+    if (!ativo) {
+      return (
+        '<div class="sec-title">🔒 Bloqueio do app</div>' +
+        '<div class="card">' +
+        '<p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
+        "Peça o PIN toda vez que abrir o app: ninguém que pegue seu celular vê seus lançamentos.</p>" +
+        '<button class="btn ghost" data-act="pin-on">Ativar bloqueio com PIN</button>' +
+        "</div>"
+      );
+    }
+
+    return (
+      '<div class="sec-title">🔒 Bloqueio do app</div>' +
+      '<div class="card">' +
+      '<div class="bk-resumo">🔒 Ativo · ' + (s.pinLen || 4) + " dígito" +
+      ((s.pinLen || 4) > 1 ? "s" : "") + (temCred ? " · digital/rosto" : "") + "</div>" +
+      '<div class="bk-btns">' +
+      '<button class="btn ghost" data-act="pin-change">Trocar PIN</button>' +
+      '<button class="btn danger" data-act="pin-off">Desativar</button>' +
+      "</div>" +
+      (bioOk
+        ? '<div class="bk-btns"><button class="btn ghost" data-act="' +
+          (temCred ? "bio-off" : "bio-on") + '">' +
+          (temCred ? "Remover digital/rosto" : "🔓 Abrir com digital/rosto") + "</button></div>"
+        : '<div class="bk-dica">Este navegador não oferece digital/rosto — o PIN é o caminho.</div>') +
+      '<div class="bk-btns"><button class="btn ghost" data-act="lock-now">Bloquear agora</button></div>' +
+      '<div class="bk-dica">📌 Código de recuperação: <b>' + esc(s.recCode || "—") +
+      "</b> — guarde em local seguro; é por ele que você volta a entrar se esquecer o PIN.</div>" +
+      "</div>"
+    );
+  }
+
+  /* se o aparelho tem digital/rosto de verdade (só a API não basta) */
+  function checarBio() {
+    if (!window.PublicKeyCredential || !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable)
+      return;
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then((ok) => {
+        state.bioDisp = ok;
+        const h2 = document.querySelector("#modal-root h2");
+        if (h2 && h2.textContent.trim() === "Ajustes") settingsSheet();
+      })
+      .catch(() => {});
+  }
+
   function settingsSheet() {
     const cats = Store.categories();
     const ini = Store.settings().initialBalance || 0;
@@ -782,6 +997,7 @@
       '<button data-act="check-update">🔄 Verificar atualização<span class="arrow">›</span></button>' +
       "</div>" +
       backupCard() +
+      lockSection() +
       '<div class="sec-title">Saldo inicial (caixa de partida)</div>' +
       '<div class="field">' +
       '<form data-form="initial" style="display:flex;gap:8px">' +
@@ -893,6 +1109,94 @@
       render();
     },
     "close-modal"() { closeSheet(); },
+    budgets() { budgetsSheet(); },
+    "new-rec"() { recSheet(); },
+    "del-rec"(el) {
+      const r = Store.rec(el.dataset.id);
+      if (!r) return;
+      askConfirm(
+        "Remover conta fixa?",
+        (r.note || catName(r.catId)) + " · " + fmt(r.amount) + " todo dia " + r.day +
+          ". Os lançamentos já criados continuam na sua lista.",
+        () => {
+          Store.removeRec(r.id);
+          closeSheet();
+          render();
+          toast("Conta fixa removida");
+        },
+        "Remover"
+      );
+    },
+
+    /* ---------------- bloqueio ---------------- */
+    "pin-on"() { pinSheet(false); },
+    "pin-change"() { pinSheet(true); },
+    "pin-key"(el) { pinDigite(el.dataset.k); },
+    "pin-back"() { pinApaga(); },
+    "lock-bio"() { if (Store.settings().cred) desbloquearBio(); },
+    "lock-rec-show"() {
+      const r = document.getElementById("lockRec");
+      if (r) {
+        r.hidden = false;
+        const i = r.querySelector("input");
+        if (i) i.focus();
+      }
+    },
+    "lock-now"() { mostrarLock(); },
+    "pin-off"() {
+      askConfirm(
+        "Desativar bloqueio?",
+        "O app volta a abrir sem pedir PIN. Seus dados continuam salvos neste aparelho.",
+        () => {
+          Store.clearPin();
+          settingsSheet();
+          toast("Bloqueio desativado");
+        },
+        "Desativar"
+      );
+    },
+    async "bio-on"() {
+      try {
+        if (!navigator.credentials || !window.PublicKeyCredential)
+          return toast("Este navegador não suporta digital/rosto");
+        const disp = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!disp)
+          return toast("Nenhuma digital/rosto cadastrada neste aparelho");
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rp: { name: "Minha Vida Financeira" },
+            user: {
+              id: crypto.getRandomValues(new Uint8Array(16)),
+              name: "usuario",
+              displayName: "Você"
+            },
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },
+              { type: "public-key", alg: -257 }
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform",
+              userVerification: "required",
+              residentKey: "preferred"
+            },
+            attestation: "none",
+            timeout: 30000
+          }
+        });
+        if (!cred) return;
+        Store.setSetting("cred", bufToB64(cred.rawId));
+        settingsSheet();
+        toast("Digital/rosto ativado ✓");
+      } catch (e) {
+        toast("Não foi possível ativar (talvez cancelado)");
+      }
+    },
+    "bio-off"() {
+      Store.setSetting("cred", null);
+      settingsSheet();
+      toast("Digital/rosto removido");
+    },
     "check-update"() {
       closeSheet();
       if (location.protocol.indexOf("http") !== 0) {
@@ -960,7 +1264,10 @@
         () => { Store.removeThird(t.id); closeSheet(); render(); toast("Registro excluído"); });
     },
 
-    settings() { settingsSheet(); },
+    settings() {
+      settingsSheet();
+      checarBio();
+    },
     install() {
       if (deferredInstall) {
         deferredInstall.prompt();
@@ -1121,6 +1428,68 @@
       toast("Saldo inicial atualizado");
       return;
     }
+    if (kind === "rec") {
+      const amount = parseMoney(fd.get("amount"));
+      if (amount <= 0) return toast("Informe o valor");
+      const dest = String(fd.get("dest") || "");
+      const isCard = dest.indexOf("card:") === 0;
+      Store.addRec({
+        type: "out",
+        amount,
+        day: Math.min(31, Math.max(1, Number(fd.get("day")) || 1)),
+        catId: fd.get("catId") || "out_outros",
+        note: String(fd.get("note") || "").trim(),
+        cardId: isCard ? dest.slice(5) : null,
+        accId: isCard ? null : dest.slice(4) || null,
+        start: today().slice(0, 7)
+      });
+      const gerados = Store.syncRecs(today());
+      closeSheet();
+      go("tx");
+      toast(
+        gerados.length
+          ? "Conta fixa criada — já lançei a de " + monthLabel(today().slice(0, 7)) + " ✓"
+          : "Conta fixa criada ✓"
+      );
+      return;
+    }
+    if (kind === "pin") {
+      const p1 = String(fd.get("pin") || "").trim();
+      const p2 = String(fd.get("pin2") || "").trim();
+      if (!/^\d{4,6}$/.test(p1)) return toast("O PIN precisa de 4 a 6 números");
+      if (p1 !== p2) return toast("Os PINs não são iguais");
+      Store.setPin(p1).then(() => {
+        if (!Store.settings().recCode) Store.setSetting("recCode", gerarCodigo());
+        render();
+        codigoSheet();
+        toast("🔒 Bloqueio ativado");
+      });
+      return;
+    }
+    if (kind === "rec-code") {
+      const cod = String(fd.get("code") || "").trim().toUpperCase();
+      if (cod && cod === Store.settings().recCode) {
+        Store.clearPin();
+        destravar();
+        render();
+        toast("PIN removido — ative um novo nos Ajustes");
+      } else {
+        toast("Código incorreto");
+      }
+      return;
+    }
+    if (kind === "budgets") {
+      const mapa = {};
+      Store.categories().forEach((c) => {
+        const v = parseMoney(fd.get("b_" + c.id));
+        if (v > 0) mapa[c.id] = v;
+      });
+      Store.setBudgets(mapa);
+      budgetsSheet();
+      render();
+      toast(Object.keys(mapa).length ? "Limites salvos" : "Orçamentos removidos");
+      return;
+    }
     if (kind === "cat") {
       const name = String(fd.get("name") || "").trim();
       if (!name) return;
@@ -1161,6 +1530,22 @@
     }
     closeSheet();
     render();
+    const aviso = avisoOrcamento(base);
+    if (aviso) setTimeout(() => toast(aviso), 1500);
+  }
+
+  /* avisa quando um lançamento encosta/estoura o limite da categoria */
+  function avisoOrcamento(t) {
+    if (!t || t.type !== "out") return null;
+    const limite = Store.budgets()[t.catId] || 0;
+    if (!limite) return null;
+    const gasto = Store.spentInMonth(monthKey(t.date), t.catId);
+    if (gasto > limite)
+      return "⚠️ Estourou " + catName(t.catId) + ": " + fmt(gasto) + " de " + fmt(limite);
+    if (gasto >= limite * 0.8)
+      return "🟡 " + catName(t.catId) + " já usou " +
+        Math.round((gasto / limite) * 100) + "% do limite (" + fmt(limite) + ")";
+    return null;
   }
 
   function saveCard(form, fd) {
@@ -1212,6 +1597,123 @@
     render();
   }
 
+  /* =====================================================================
+     BLOQUEIO DO APP (PIN + digital/rosto)
+     ===================================================================== */
+  let pinBuf = "";
+  let ultimaSaida = 0;
+
+  function bufToB64(buf) {
+    let s = "";
+    new Uint8Array(buf).forEach((b) => (s += String.fromCharCode(b)));
+    return btoa(s);
+  }
+  function b64ToBuf(b64) {
+    const s = atob(b64);
+    const u = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+    return u.buffer;
+  }
+  function gerarCodigo() {
+    const alf = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let c = "";
+    for (let i = 0; i < 6; i++) c += alf[Math.floor(Math.random() * alf.length)];
+    return c;
+  }
+
+  function lockHTML() {
+    const s = Store.settings();
+    const len = s.pinLen || 4;
+    const temBio = !!s.cred && "credentials" in navigator;
+    return (
+      '<div class="lock" id="lock">' +
+      '<div class="lock-box">' +
+      '<div class="lock-ico">🔐</div>' +
+      "<h2>Minha Vida Financeira</h2>" +
+      '<div class="lock-msg">Digite seu PIN de ' + len + " dígito" + (len > 1 ? "s" : "") + "</div>" +
+      '<div class="pin-dots" id="pinDots"></div>' +
+      '<div class="lock-err" id="lockErr"></div>' +
+      '<div class="keypad">' +
+      [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        .map((n) => '<button type="button" data-act="pin-key" data-k="' + n + '">' + n + "</button>")
+        .join("") +
+      '<button type="button" data-act="lock-bio" class="kp-bio' + (temBio ? "" : " hide") + '" aria-label="Usar digital">🔓</button>' +
+      '<button type="button" data-act="pin-key" data-k="0">0</button>' +
+      '<button type="button" data-act="pin-back" aria-label="Apagar">⌫</button>' +
+      "</div>" +
+      '<button type="button" class="lock-rec-link" data-act="lock-rec-show">Esqueci meu PIN</button>' +
+      '<div class="lock-rec" id="lockRec" hidden>' +
+      '<div class="lock-msg">Digite o código de recuperação que você guardou ao ativar o bloqueio:</div>' +
+      '<form data-form="rec-code" class="lock-rec-form">' +
+      '<input name="code" placeholder="Ex.: K7M2Q9" autocapitalize="characters" maxlength="8" required>' +
+      '<button class="btn small" type="submit">Desbloquear</button>' +
+      "</form></div>" +
+      "</div></div>"
+    );
+  }
+
+  function mostrarLock() {
+    if (!Store.pinAtivo()) return;
+    if (document.getElementById("lock")) return;
+    pinBuf = "";
+    $("#lock-root").innerHTML = lockHTML();
+    pinAtualizar();
+  }
+  function destravar() {
+    pinBuf = "";
+    $("#lock-root").innerHTML = "";
+  }
+  function pinAtualizar() {
+    const len = Store.settings().pinLen || 4;
+    const dots = document.getElementById("pinDots");
+    if (!dots) return;
+    let h = "";
+    for (let i = 0; i < len; i++) h += '<i class="' + (i < pinBuf.length ? "on" : "") + '"></i>';
+    dots.innerHTML = h;
+    if (pinBuf.length >= len) {
+      Store.checkPin(pinBuf).then((ok) => {
+        const err = document.getElementById("lockErr");
+        if (ok) return destravar();
+        pinBuf = "";
+        pinAtualizar();
+        const box = document.querySelector(".lock-box");
+        if (box) {
+          box.classList.remove("shake");
+          void box.offsetWidth; /* reinicia a animação */
+          box.classList.add("shake");
+        }
+        if (err) { const e2 = document.getElementById("lockErr"); if (e2) e2.textContent = "PIN incorreto"; }
+      });
+    }
+  }
+  function pinDigite(k) {
+    const len = Store.settings().pinLen || 4;
+    if (pinBuf.length >= len) pinBuf = "";
+    pinBuf += k;
+    pinAtualizar();
+  }
+  function pinApaga() {
+    pinBuf = pinBuf.slice(0, -1);
+    pinAtualizar();
+  }
+  async function desbloquearBio() {
+    try {
+      const cred = await navigator.credentials.get({
+        publicKey: {
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          allowCredentials: [
+            { type: "public-key", id: b64ToBuf(Store.settings().cred) }
+          ],
+          userVerification: "required",
+          timeout: 30000
+        }
+      });
+      if (cred) destravar();
+    } catch (e) {
+      toast("Biometria não concluída — use o PIN");
+    }
+  }
+
   /* ---------------- boot ---------------- */
   let deferredInstall = null;
   window.addEventListener("beforeinstallprompt", (e) => {
@@ -1221,6 +1723,42 @@
 
   window.addEventListener("hashchange", () => go(location.hash.slice(1)));
   go(location.hash.slice(1) || "home");
+
+  /* contas fixas: cria sozinho o que já venceu neste mês */
+  try {
+    const gerados = Store.syncRecs(today());
+    if (gerados.length)
+      setTimeout(
+        () => toast("🔁 " + gerados.length + " conta(s) fixa(s) lançada(s) por você"),
+        1400
+      );
+  } catch (e) {}
+
+  /* lembrete de vencimento de fatura (3 dias) — 1 aviso por mês */
+  try {
+    const dHoje = new Date().getDate();
+    const mk = today().slice(0, 7);
+    const perto = Store.cards().filter((c) => {
+      const dias = (Number(c.due) || 10) - dHoje;
+      return dias >= 0 && dias <= 3;
+    });
+    if (perto.length) {
+      const flag = "fin_aviso_fatura_" + mk;
+      if (localStorage.getItem(flag) !== today()) {
+        localStorage.setItem(flag, today());
+        const c = perto[0];
+        const dias = (Number(c.due) || 10) - dHoje;
+        setTimeout(() => {
+          const inv = Store.cardInvoice(c.id, mk);
+          toast(
+            "💳 Fatura " + c.name +
+              (dias === 0 ? " vence HOJE" : " vence em " + dias + " dia(s)") +
+              (inv.total ? " · " + fmt(inv.total) : "")
+          );
+        }, 5600);
+      }
+    }
+  } catch (e) {}
 
   /* lembrete de backup: se passar 7 dias sem exportar, avisa uma vez por dia */
   (function lembreteBackup() {
@@ -1241,10 +1779,34 @@
               ? "Faz " + dias + " dias sem exportar backup ⚙️"
               : "Você ainda não fez backup ⚙️ Ajustes"
           ),
-        2600
+        4200
       );
     } catch (e) {}
   })();
+
+  /* ---------------- bloqueio: inicia travado + trava ao voltar pro app ---------------- */
+  if (Store.pinAtivo()) mostrarLock();
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      ultimaSaida = Date.now();
+    } else if (ultimaSaida && Date.now() - ultimaSaida > 60000) {
+      mostrarLock();
+      ultimaSaida = 0;
+    }
+  });
+
+  /* teclado físico no PIN (quando o bloqueio está aberto) */
+  document.addEventListener("keydown", (e) => {
+    if (!document.getElementById("lock")) return;
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      pinDigite(e.key);
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      pinApaga();
+    }
+  });
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     navigator.serviceWorker

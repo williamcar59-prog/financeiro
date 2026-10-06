@@ -583,3 +583,60 @@ button {
   body { background: #e9edf5; }
   #app { box-shadow: 0 0 60px rgba(15,23,42,.10); min-height: 100vh; }
 }
+
+/* =====================================================================
+   v1.3.0 — ORÇAMENTO, CONTAS FIXAS E BLOQUEIO
+   ===================================================================== */
+
+/* --- orçamento por categoria --- */
+.orc-valor { font-weight: 700; font-size: 13px; }
+.orc-valor.quase { color: var(--warn); }
+.orc-valor.estourou { color: var(--out); }
+.orc-dica { font-size: 11.5px; color: var(--ink-3); margin-top: 5px; line-height: 1.4; }
+.orc-dica.quase { color: var(--warn); }
+.orc-dica.estourou { color: var(--out); font-weight: 600; }
+.field.orc-linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.field.orc-linha:last-of-type { border-bottom: none; }
+.field.orc-linha label { font-size: 13.5px; font-weight: 600; color: var(--ink-2); flex: 1; }
+.field.orc-linha .amount-wrap { width: 148px; flex: none; }
+.field.orc-linha .amount-wrap input { font-size: 16px; padding: 9px 10px 9px 34px; height: auto; }
+
+/* --- contas fixas --- */
+.rec-item { display: flex; align-items: center; gap: 11px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line); }
+.rec-item:last-child { border-bottom: none; }
+.rec-item .row-mid { flex: 1; min-width: 0; }
+.rec-item .row-mid .t { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-item .row-mid .s { font-size: 12px; color: var(--ink-3); margin-top: 3px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.rec-del { flex: none; width: 44px; height: 44px; border: none; background: none; color: var(--ink-3); font-size: 24px; line-height: 1; border-radius: 50%; cursor: pointer; }
+.rec-del:active { background: #f2f4f9; color: var(--out); }
+
+/* --- textos de folha (sheet) --- */
+.sheet-intro { font-size: 13.5px; color: var(--ink-2); line-height: 1.55; margin: -4px 0 14px; }
+
+/* =====================================================================
+   BLOQUEIO DO APP
+   ===================================================================== */
+.lock { position: fixed; inset: 0; z-index: 95; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; overscroll-behavior: contain; }
+.lock-box { width: 100%; max-width: 330px; text-align: center; }
+.lock-box.shake { animation: shake .4s; }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-9px); } 50% { transform: translateX(9px); } 75% { transform: translateX(-5px); } }
+.lock-ico { font-size: 44px; line-height: 1; margin-bottom: 10px; }
+.lock-box h2 { font-size: 18px; margin: 0 0 6px; }
+.lock-msg { font-size: 13px; color: var(--ink-3); margin-bottom: 16px; }
+.pin-dots { display: flex; justify-content: center; gap: 13px; margin-bottom: 10px; min-height: 16px; }
+.pin-dots i { width: 13px; height: 13px; border-radius: 50%; background: #d9dfeb; display: block; }
+.pin-dots i.on { background: var(--brand); transform: scale(1.12); }
+.lock-err { font-size: 13px; color: var(--out); font-weight: 600; min-height: 18px; margin-bottom: 6px; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; max-width: 268px; margin: 0 auto; }
+.keypad button { height: 56px; border: none; border-radius: 16px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.12); font-size: 21px; font-weight: 600; color: var(--ink); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.keypad button:active { background: var(--brand); color: #fff; transform: scale(.96); }
+.keypad .kp-bio { font-size: 22px; }
+.keypad .kp-bio.hide { visibility: hidden; }
+.lock-rec-link { margin-top: 18px; background: none; border: none; color: var(--ink-3); font-size: 13px; text-decoration: underline; cursor: pointer; padding: 8px; }
+.lock-rec { margin-top: 6px; }
+.lock-rec .lock-msg { margin-bottom: 10px; }
+.lock-rec-form { display: flex; gap: 8px; }
+.lock-rec-form input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-weight: 700; }
+.lock-rec-form .btn { flex: none; }
+.rec-code { text-align: center; font-size: 30px; font-weight: 800; letter-spacing: 7px; color: var(--brand-d); background: var(--brand-soft); border: 1px dashed var(--brand); border-radius: 14px; padding: 16px 10px; margin: 6px 0 4px; }
+.btn.small { padding: 10px 14px; font-size: 13.5px; }
