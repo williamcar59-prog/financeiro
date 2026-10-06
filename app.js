@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.5.0";
+  const APP_VERSION = "1.5.1";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */

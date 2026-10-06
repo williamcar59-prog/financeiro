@@ -69,20 +69,24 @@ Abra esse endereço no **PC primeiro** para conferir que carregou.
    **iPhone:** botão compartilhar → *Adicionar à Tela de Início*.
 3. Pronto: ícone na tela, tela cheia e **funciona offline**.
 
+> **Não existe APK nem Play Store.** É um app web instalado pelo navegador
+> (PWA) — o ícone é só um atalho para o site. Por isso **atualizar é automático**:
+> você nunca mais precisa instalar nada de novo.
+
 > Dica: dentro do app, vá em **⚙️ Ajustes → 📲 Instalar no celular**
 > para ver esse passo a passo de novo.
 
 ### Atualizar o app depois
 
 1. Antes de publicar, **suba a versão** nos dois arquivos (mesmo número):
-   - `app.js` → `APP_VERSION = "1.5.0"` e `BUILD_DATE = "06/10/2026"`
-   - `sw.js` → `const VERSION = "1.5.0"`
+   - `app.js` → `APP_VERSION = "1.5.1"` e `BUILD_DATE = "06/10/2026"`
+   - `sw.js` → `const VERSION = "1.5.1"`
 2. Repita o passo 2 (arrastar os arquivos novos → Commit changes).
    Em ~1 minuto o site atualiza.
 3. No celular, feche e abra o app (ou toque em **🔄 Verificar atualização**
    nos Ajustes) para pegar a versão nova.
 
-O número da versão aparece no topo do Painel (`.v1.5.0`) e no fim dos
+O número da versão aparece no topo do Painel (`.v1.5.1`) e no fim dos
 **Ajustes**. Quando sair versão nova, uma faixa "⬆️ Nova versão disponível"
 aparece sozinha no rodapé do app.
 

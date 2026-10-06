@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",
@@ -8,6 +8,10 @@ const ASSETS = [
   "./styles.css",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./icon-maskable-512.png",
+  "./apple-touch-icon.png",
   "./store.js",
   "./app.js"
 ];
