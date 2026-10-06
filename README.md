@@ -74,9 +74,17 @@ Abra esse endereço no **PC primeiro** para conferir que carregou.
 
 ### Atualizar o app depois
 
-Qualquer mudança nos arquivos: repita o passo 2 (arrastar os arquivos
-novos → Commit changes). Em ~1 minuto o site atualiza. No celular, feche
-e abra o app (ou atualize a página) para pegar a versão nova.
+1. Antes de publicar, **suba a versão** nos dois arquivos (mesmo número):
+   - `app.js` → `APP_VERSION = "1.1.0"` e `BUILD_DATE = "06/10/2026"`
+   - `sw.js` → `const VERSION = "1.1.0"`
+2. Repita o passo 2 (arrastar os arquivos novos → Commit changes).
+   Em ~1 minuto o site atualiza.
+3. No celular, feche e abra o app (ou toque em **🔄 Verificar atualização**
+   nos Ajustes) para pegar a versão nova.
+
+O número da versão aparece no topo do Painel (`.v1.1.0`) e no fim dos
+**Ajustes**. Quando sair versão nova, uma faixa "⬆️ Nova versão disponível"
+aparece sozinha no rodapé do app.
 
 ---
 
