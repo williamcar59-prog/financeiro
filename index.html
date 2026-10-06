@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#10b981">
+<meta name="description" content="Controle financeiro pessoal: entradas, saídas, cartões de crédito e gastos de terceiros no seu cartão.">
+<title>Minha Vida Financeira</title>
+
+<!-- iOS (Safari): instalar como aplicativo -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Finanças">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+  <main id="view" aria-live="polite"></main>
+
+  <button id="fab" data-act="new-tx" aria-label="Novo lançamento">
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </button>
+
+  <nav id="tabbar">
+    <button data-route="home" class="active"><span class="ico">🏠</span><span class="lbl">Início</span></button>
+    <button data-route="tx"><span class="ico">🧾</span><span class="lbl">Lançamentos</span></button>
+    <button data-route="cards"><span class="ico">💳</span><span class="lbl">Cartões</span></button>
+    <button data-route="third"><span class="ico">👥</span><span class="lbl">Terceiros</span></button>
+    <button data-route="report"><span class="ico">📊</span><span class="lbl">Relatórios</span></button>
+  </nav>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast" role="status"></div>
+
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

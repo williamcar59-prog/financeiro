@@ -1,0 +1,20 @@
+{
+  "name": "Minha Vida Financeira",
+  "short_name": "Finanças",
+  "description": "Controle de entradas, saídas, cartões de crédito e gastos de terceiros.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6fa",
+  "theme_color": "#10b981",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
