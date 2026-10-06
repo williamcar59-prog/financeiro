@@ -156,7 +156,48 @@ Como o app se protege:
 
 ---
 
-## Próximas fases
+## 🎯🔁🔒 Os três recursos da v1.3.0
+
+### 🎯 Orçamento por categoria
+
+**Relatórios → 🎯 limites**: defina um valor máximo por categoria
+(ex.: R$ 800 no mercado). Durante o mês aparece uma barra de progresso:
+
+- 🟢 **até 79%** — tranquilo;
+- 🟡 **80% ou mais** — o app avisa quando você lançar algo: *"Alimentação já
+  usou 95% do limite"*;
+- 🔴 **estourou** — aviso na hora do lançamento e no relatório
+  *"Estourou Alimentação: R$ 1.050 de R$ 1.000"*.
+
+Categorias sem limite não são controladas (basta deixar em branco).
+
+### 🔁 Contas fixas (aluguel, luz, internet, assinaturas)
+
+Em **Lançamentos → 🔁 Contas fixas**, cadastre uma vez: valor, dia do mês,
+categoria e com o que você paga. A partir daí o app **cria o lançamento
+sozinho** no dia marcado — inclusive para os meses que já passaram desde o
+cadastro. Na primeira abertura do mês aparece um aviso dizendo o que foi
+lançado.
+
+Também aparece **um lembrete de vencimento de fatura** — uma vez por mês, no
+dia em que faltam 3 dias ou menos para o vencimento de algum cartão.
+
+### 🔒 Bloqueio com PIN
+
+**⚙️ Ajustes → 🔒 Bloqueio do app**: crie um PIN de 4 a 6 números. O app passa
+a pedir esse PIN toda vez que abrir.
+
+- ao ativar, aparece um **código de recuperação** (ex.: `K7M2Q9`) — anote em
+  lugar seguro, é ele que te faz entrar se esquecer o PIN;
+- se o aparelho tiver digital/rosto (como o Galaxy S20 FE), o botão
+  **🔓 Abrir com digital/rosto** aparece sozinho nos Ajustes;
+- **Bloquear agora** trava na hora; o app também trava sozinho se ficar mais
+  de 1 minuto em segundo plano;
+- o PIN é guardado só como código ilegível (hash) — nem ele mesmo consegue ser
+  recuperado, por isso o código de recuperação.
+
+---
+
 
 - ~~**Fase 3 — Ajustes finos:** metas por categoria, lembrete de vencimento,
   recorrências fixas (aluguel/assinaturas).~~ ✅ **Feito na v1.3.0**
