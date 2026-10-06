@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.5.0";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -153,8 +153,9 @@
     const prevLabel = monthLabel(addMonths(mk, -1));
     const cards = Store.cards();
     const invTotal = cards.reduce((s, c) => s + Store.cardInvoice(c.id, mk).total, 0);
+    const somaContas = Store.accBalances(mk).reduce((s, x) => s + x.v, 0);
 
-    if (!list.length && !cards.length && !Store.data.third.length) {
+    if (!list.length && !cards.length && !Store.data.third.length && Store.openingTotal() === 0) {
       return (
         headerHome() +
         '<div class="empty"><div class="big">💸</div><h3>Vamos começar</h3>' +
@@ -162,6 +163,8 @@
         '<div class="form-actions">' +
         '<button class="btn" data-act="new-tx">Novo lançamento</button>' +
         "</div>" +
+        '<div style="height:10px"></div>' +
+        '<button class="btn ghost" data-act="settings">💰 Definir meu dinheiro (contas)</button>' +
         '<div style="height:10px"></div>' +
         '<button class="btn ghost" data-act="new-card">Cadastrar cartão</button>' +
         "</div>"
@@ -190,6 +193,14 @@
       '<div><div class="k"><i class="dot b"></i>Saldo do mês</div><div class="v' + (saldo < 0 ? " neg" : "") + '">' + fmt(saldo) + "</div></div>" +
       "</div></div>" +
 
+      /* contas: saldo separado de cada uma (soma = caixa acima) */
+      '<div class="sec-title">💰 Contas <button data-act="move">💸 transferir</button></div>' +
+      '<div class="card pad0">' +
+      Store.accBalances(mk).map(accRow).join("") +
+      '<div class="acc-row total"><span>💰 Total</span><b>' + fmt(somaContas) + "</b></div>" +
+      ultimaMovHtml() +
+      "</div>" +
+
       /* indicadores */
       '<div class="grid3">' +
       mini("💳", "Faturas do mês", fmt(invTotal)) +
@@ -211,6 +222,26 @@
       (recent.length
         ? '<div class="rows">' + recent.map(rowTx).join("") + "</div>"
         : '<div class="card" style="text-align:center;color:var(--ink-2);font-size:14px">Nenhum lançamento em ' + esc(monthLabel(mk)) + "</div>")
+    );
+  }
+
+  /* linha de conta com saldo (usada no Painel) */
+  function accRow(x) {
+    return (
+      '<div class="acc-row"><span class="ai">' + (x.a.icon || "🏦") + " " + esc(x.a.name) + "</span>" +
+      '<b class="' + (x.v < 0 ? "neg" : "") + '">' + fmt(x.v) + "</b></div>"
+    );
+  }
+
+  /* rodapé da caixa de contas: última transferência registrada */
+  function ultimaMovHtml() {
+    const t = Store.lastTransfer();
+    if (!t) return "";
+    const de = Store.account(t.from), para = Store.account(t.to);
+    return (
+      '<div class="acc-mov">↔️ ' + fmt(t.amount) + " · " +
+      esc(de ? de.name : "?") + " → " + esc(para ? para.name : "?") +
+      " · " + esc(String(t.date).split("-").reverse().slice(0, 2).join("/")) + "</div>"
     );
   }
 
@@ -815,6 +846,19 @@
   /* =====================================================================
      MODAIS: CARTÃO
      ===================================================================== */
+  /* de qual conta sai o dinheiro das compras deste cartão */
+  function cardAccRow(c) {
+    const alvo = (c && c.accId) || Store.defaultAccId();
+    return (
+      '<div class="field"><label>Conta que paga</label><select name="accId">' +
+      Store.accounts()
+        .map((a) => '<option value="' + a.id + '"' + (a.id === alvo ? " selected" : "") + ">" +
+          (a.icon || "🏦") + " " + esc(a.name) + "</option>")
+        .join("") +
+      '</select><div class="hint">As compras do cartão já descontam do saldo desta conta no mês da parcela.</div></div>'
+    );
+  }
+
   function cardSheet(id) {
     const c = id ? Store.card(id) : null;
     const color = c ? c.color : CARD_COLORS[0];
@@ -832,6 +876,7 @@
       '<div class="field"><label>Dia do fechamento</label><input name="closing" type="number" min="1" max="31" value="' + (c ? c.closing : 1) + '"></div>' +
       '<div class="field"><label>Dia do vencimento</label><input name="due" type="number" min="1" max="31" value="' + (c ? c.due : 10) + '"></div>' +
       "</div>" +
+      (Store.accounts().length > 1 ? cardAccRow(c) : "") +
       '<div class="field"><label>Cor</label><div class="tag-list" id="colorList">' +
       CARD_COLORS.map(
         (col) =>
@@ -909,7 +954,8 @@
       '<div class="sec-title">Backup dos seus dados</div>' +
       '<div class="card bk">' +
       '<div class="bk-resumo">📦 ' + st.tx + " lançamento(s) · " + st.cards + " cartão(ões) · " +
-      st.third + " pessoa(s)" + (st.recs ? " · 🔁 " + st.recs + " conta(s) fixa(s)" : "") + "</div>" +
+      st.third + " pessoa(s)" + (st.recs ? " · 🔁 " + st.recs + " conta(s) fixa(s)" : "") +
+      (st.accs ? " · 💰 " + st.accs + " conta(s)" : "") + "</div>" +
       '<div class="bk-ultimo' + (velho && (st.tx || st.cards || st.third) ? " warn" : "") + '">' +
       "Último export: " + quando + " <span>(" + idade + ")</span></div>" +
       '<div class="bk-btns">' +
@@ -950,6 +996,61 @@
       '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
       '<button class="btn" type="submit">Salvar limites</button></div></form>'
     );
+  }
+
+  /* =====================================================================
+     MODAIS: MOVIMENTAR ENTRE CONTAS (transferência / rendimento)
+     ===================================================================== */
+  function moveSheet() {
+    const accs = Store.accounts();
+    if (accs.length < 2) return toast("Cadastre pelo menos 2 contas nos Ajustes");
+    const opt = (sel) =>
+      accs
+        .map((a) => '<option value="' + a.id + '"' + (a.id === sel ? " selected" : "") + ">" +
+          (a.icon || "🏦") + " " + esc(a.name) + "</option>")
+        .join("");
+    const banco = Store.defaultAccId();
+
+    openSheet(
+      "<h2>💸 Movimentar contas</h2>" +
+      '<p class="sheet-intro">Transferir <b>não</b> é gasto — o dinheiro só muda de lugar. ' +
+      "Rendimento é dinheiro novo e entra como <b>entrada</b>.</p>" +
+      '<form data-form="move">' +
+      '<div class="seg">' +
+      '<label class="s-mv"><input type="radio" name="modo" value="tr" checked><span>💸 Transferir</span></label>' +
+      '<label class="s-rd"><input type="radio" name="modo" value="rd"><span>📈 Rendimento</span></label>' +
+      "</div>" +
+      '<div id="blocoTr">' +
+      '<div class="row2">' +
+      '<div class="field"><label>Sai de</label><select name="from">' + opt(accs[0].id) + "</select></div>" +
+      '<div class="field"><label>Entra em</label><select name="to">' +
+      opt(accs.length > 1 ? accs[1].id : accs[0].id) + "</select></div>" +
+      "</div>" +
+      "</div>" +
+      '<div id="blocoRd" hidden>' +
+      '<div class="field"><label>Entrou em</label><select name="acc">' + opt(banco) + "</select></div>" +
+      '<div class="field"><label>Descrição</label><input name="note" value="Rendimento"></div>' +
+      "</div>" +
+      '<div class="row2">' +
+      '<div class="field"><label>Valor</label><div class="amount-wrap"><span class="cur">R$</span>' +
+      '<input name="amount" inputmode="decimal" placeholder="0,00" required></div></div>' +
+      '<div class="field"><label>Data</label><input name="date" type="date" value="' + today() + '"></div>' +
+      "</div>" +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn" type="submit">Salvar</button></div></form>'
+    );
+  }
+
+  /* mostra o bloco certo (transferir x rendimento) */
+  function syncMove(form) {
+    if (!form || form.dataset.form !== "move") return;
+    const modo = form.querySelector("[name=modo]:checked");
+    const m = modo ? modo.value : "tr";
+    const tr = form.querySelector("#blocoTr");
+    const rd = form.querySelector("#blocoRd");
+    if (tr) tr.hidden = m !== "tr";
+    if (rd) rd.hidden = m !== "rd";
   }
 
   function pinSheet(trocando) {
@@ -1036,7 +1137,27 @@
 
   function settingsSheet() {
     const cats = Store.categories();
-    const ini = Store.settings().initialBalance || 0;
+    const accs = Store.accounts();
+    const somaIni = Store.openingTotal();
+    const linhasAcc = accs
+      .map((a) => {
+        const v = a.opening || 0;
+        const usada = Store.accUsed(a.id);
+        return (
+          '<div class="field orc-linha acc-linha">' +
+          '<span class="ai">' + (a.icon || "🏦") + "</span>" +
+          '<input class="acc-name" name="n_' + a.id + '" value="' + esc(a.name) + '" aria-label="Nome da conta">' +
+          '<div class="amount-wrap"><span class="cur">R$</span>' +
+          '<input name="o_' + a.id + '" inputmode="decimal" placeholder="0,00" value="' +
+          (v ? (v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
+          '"></div>' +
+          (usada
+            ? ""
+            : '<button type="button" class="rec-del" data-act="del-acc" data-id="' + a.id + '" title="Remover conta">×</button>') +
+          "</div>"
+        );
+      })
+      .join("");
     openSheet(
       "<h2>Ajustes</h2>" +
       '<div class="settings-list">' +
@@ -1045,17 +1166,21 @@
       "</div>" +
       backupCard() +
       lockSection() +
-      '<div class="sec-title">Saldo inicial (caixa de partida)</div>' +
-      '<div class="field">' +
-      '<form data-form="initial" style="display:flex;gap:8px">' +
-      '<div class="amount-wrap" style="flex:1"><span class="cur">R$</span>' +
-      '<input name="initial" inputmode="decimal" placeholder="0,00" value="' +
-      (ini ? (ini / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
-      '"></div>' +
-      '<button class="btn small" type="submit" style="align-self:center">Salvar</button>' +
+      '<div class="sec-title">💰 Contas (dinheiro separado)</div>' +
+      '<form data-form="openings">' +
+      linhasAcc +
+      '<div class="form-actions">' +
+      '<button class="btn" type="submit">Salvar contas</button></div>' +
       "</form>" +
-      '<div class="hint">Dinheiro que você já tem hoje. Entra como saldo do mês anterior ao seu primeiro lançamento — assim o caixa bate com a realidade.</div>' +
-      "</div>" +
+      '<div class="hint">Saldo inicial = o que você <b>já tem</b> em cada conta antes do primeiro lançamento. ' +
+      "A soma das contas é o <b>Caixa</b> do Painel (agora " + fmt(somaIni) + ").</div>" +
+      '<div class="field" style="margin-top:14px"><label>Nova conta</label>' +
+      '<form data-form="acc" style="display:flex;gap:8px">' +
+      '<input name="icon" value="🏦" maxlength="4" style="width:56px;text-align:center" aria-label="Ícone da conta">' +
+      '<input name="name" placeholder="Ex.: Cofrinho" required style="flex:1;min-width:0">' +
+      '<button class="btn small" type="submit" style="align-self:center">＋</button>' +
+      "</form>" +
+      '<div class="hint">Ex.: 🐷 Cofrinho, 🏦 Conta, 💵 Dinheiro, 📈 Poupança.</div></div>' +
       '<div class="sec-title">Categorias</div>' +
       '<div class="field"><label>Adicionar categoria</label>' +
       '<form data-form="cat" style="display:flex;gap:8px">' +
@@ -1157,6 +1282,25 @@
     },
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
+    move() { moveSheet(); },
+    "del-acc"(el) {
+      const id = el.dataset.id;
+      const a = Store.account(id);
+      if (!a) return;
+      if (Store.accUsed(id))
+        return toast("A conta " + a.name + " tem movimentação — não dá para remover");
+      askConfirm(
+        "Remover conta " + a.name + "?",
+        "A conta está sem movimentação, então nada muda nos seus saldos.",
+        () => {
+          Store.removeAccount(id);
+          settingsSheet();
+          render();
+          toast("Conta removida");
+        },
+        "Remover"
+      );
+    },
     "new-rec"() { recSheet(); },
     "del-rec"(el) {
       const r = Store.rec(el.dataset.id);
@@ -1448,6 +1592,7 @@
     }
     if (e.target.name === "dest") syncDest();
     if (e.target.name === "installments" || e.target.name === "type") syncDest();
+    if (e.target.name === "modo") syncMove(e.target.closest("form"));
   });
 
   document.addEventListener("click", (e) => {
@@ -1469,11 +1614,61 @@
     if (kind === "tx") return saveTx(form, fd);
     if (kind === "card") return saveCard(form, fd);
     if (kind === "third") return saveThird(form, fd);
-    if (kind === "initial") {
-      Store.setSetting("initialBalance", parseMoney(fd.get("initial")));
+    if (kind === "openings") {
+      Store.accounts().forEach((a) => {
+        const nome = String(fd.get("n_" + a.id) || "").trim();
+        Store.updateAccount(a.id, {
+          name: nome || a.name,
+          opening: parseMoney(fd.get("o_" + a.id))
+        });
+      });
       settingsSheet();
       render();
-      toast("Saldo inicial atualizado");
+      toast("Contas atualizadas ✓");
+      return;
+    }
+    if (kind === "acc") {
+      const nome = String(fd.get("name") || "").trim();
+      if (!nome) return toast("Informe o nome da conta");
+      Store.addAccount({
+        name: nome,
+        icon: String(fd.get("icon") || "").trim() || "🏦",
+        type: "bank",
+        opening: 0
+      });
+      settingsSheet();
+      render();
+      toast("Conta criada — informe o saldo inicial dela ✓");
+      return;
+    }
+    if (kind === "move") {
+      const amount = parseMoney(fd.get("amount"));
+      if (amount <= 0) return toast("Informe o valor");
+      const date = String(fd.get("date") || today());
+      if (fd.get("modo") === "rd") {
+        const accId = String(fd.get("acc") || "") || Store.defaultAccId();
+        Store.addTx({
+          type: "in",
+          amount,
+          date,
+          catId: "in_invest",
+          accId,
+          cardId: null,
+          note: String(fd.get("note") || "").trim() || "Rendimento"
+        });
+        closeSheet();
+        render();
+        toast("📈 Rendimento de " + fmt(amount) + " registrado ✓");
+        return;
+      }
+      const from = String(fd.get("from") || "");
+      const to = String(fd.get("to") || "");
+      if (!from || !to) return toast("Escolha as contas");
+      if (from === to) return toast("Escolha duas contas diferentes");
+      Store.addTransfer({ from, to, amount, date, note: "" });
+      closeSheet();
+      render();
+      toast("💸 " + fmt(amount) + " movido entre contas ✓ (não é gasto)");
       return;
     }
     if (kind === "rec") {
@@ -1616,6 +1811,7 @@
       due: Math.min(31, Math.max(1, Number(fd.get("due")) || 10)),
       color: fd.get("color") || CARD_COLORS[0]
     };
+    if (form.querySelector('[name="accId"]')) patch.accId = fd.get("accId") || null;
     if (form.dataset.id) {
       Store.updateCard(form.dataset.id, patch);
       toast("Cartão atualizado");

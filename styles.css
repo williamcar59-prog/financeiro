@@ -643,3 +643,18 @@ button {
 
 /* v1.4.0 — entradas por categoria no relatório */
 .cat-row.cat-in .track > i { background: var(--in); }
+
+/* v1.5.0 — contas com saldo separado */
+.acc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.acc-row .ai { font-weight: 600; color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-row b { font-size: 15.5px; font-weight: 700; flex: none; }
+.acc-row b.neg { color: var(--out); }
+.acc-row.total { border-bottom: none; background: var(--bg); font-weight: 700; }
+.acc-row.total b { color: var(--brand); }
+.acc-mov { padding: 9px 16px 13px; font-size: 12.5px; color: var(--ink-3); background: var(--bg); border-top: 1px dashed var(--line); }
+.acc-linha { gap: 8px; }
+.acc-linha .ai { font-size: 17px; flex: none; }
+.acc-linha .acc-name { flex: 1; min-width: 0; font-weight: 600; }
+.acc-linha .rec-del { margin-right: -10px; }
+.seg .s-mv input:checked + span { background: var(--brand); }
+.seg .s-rd input:checked + span { background: var(--in); }

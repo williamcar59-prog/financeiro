@@ -35,13 +35,14 @@
     return {
       version: 1,
       accounts: [
-        { id: "acc_cash", name: "Dinheiro", type: "cash" },
-        { id: "acc_bank", name: "Conta bancária", type: "bank" }
+        { id: "acc_cash", name: "Dinheiro", type: "cash", icon: "💵", opening: 0 },
+        { id: "acc_bank", name: "Conta bancária", type: "bank", icon: "🏦", opening: 0 }
       ],
       cards: [],
       categories: DEFAULT_CATS.slice(),
       transactions: [],
       third: [],
+      transfers: [],
       budgets: {},
       recurrences: [],
       settings: { initialBalance: 0 },
@@ -50,6 +51,29 @@
   }
 
   let db = null;
+
+  /* normaliza dados antigos e garante o formato atual.
+     - cada conta ganha saldo inicial (opening) e ícone;
+     - existe o array de transferências (dinheiro que só muda de lugar);
+     - o "saldo inicial" único das versões antigas vira saldo de uma conta,
+       para que o total do caixa NÃO mude. */
+  function migrate() {
+    if (!db || typeof db !== "object" || Array.isArray(db)) db = seed();
+    if (!Array.isArray(db.accounts) || !db.accounts.length) db.accounts = seed().accounts;
+    db.accounts.forEach((a) => {
+      if (typeof a.opening !== "number") a.opening = 0;
+      if (!a.icon) a.icon = a.type === "cash" ? "💵" : "🏦";
+      if (!a.name) a.name = "Conta";
+    });
+    if (!Array.isArray(db.transfers)) db.transfers = [];
+    if (!db.settings || typeof db.settings !== "object") db.settings = { initialBalance: 0 };
+    if (typeof db.settings.initialBalance !== "number") db.settings.initialBalance = 0;
+    if (db.settings.initialBalance) {
+      const alvo = db.accounts.find((a) => a.type === "bank") || db.accounts[0];
+      alvo.opening += db.settings.initialBalance;
+      db.settings.initialBalance = 0;
+    }
+  }
 
   function persist() {
     try {
@@ -71,9 +95,9 @@
         db = seed();
       }
       if (!db.categories) db.categories = DEFAULT_CATS.slice();
-      if (!db.settings) db.settings = { initialBalance: 0 };
       if (!db.budgets || typeof db.budgets !== "object") db.budgets = {};
       if (!Array.isArray(db.recurrences)) db.recurrences = [];
+      migrate();
       return db;
     },
 
@@ -119,10 +143,96 @@
       return Store.data.accounts.find((a) => a.id === id) || null;
     },
     addAccount(a) {
-      const item = Object.assign({ id: "acc_" + Store.uid(), type: "bank" }, a);
+      const item = Object.assign(
+        { id: "acc_" + Store.uid(), type: "bank", icon: "🏦", opening: 0 },
+        a
+      );
       Store.data.accounts.push(item);
       persist();
       return item;
+    },
+    updateAccount(id, patch) {
+      const a = Store.account(id);
+      if (!a) return null;
+      delete patch.id;
+      Object.assign(a, patch);
+      persist();
+      return a;
+    },
+    /* conta padrão (para lançamentos sem destino definido) */
+    defaultAccId() {
+      const list = Store.accounts();
+      if (!list.length) return null;
+      const banco = list.find((a) => a.type === "bank");
+      return (banco || list[0]).id;
+    },
+    /* conta dona de um lançamento:
+       1) o "Pago com" (accId)  2) a conta que paga o cartão  3) conta padrão */
+    txAccId(t) {
+      if (t.accId && Store.account(t.accId)) return t.accId;
+      if (t.cardId) {
+        const c = Store.card(t.cardId);
+        if (c && c.accId && Store.account(c.accId)) return c.accId;
+      }
+      return Store.defaultAccId();
+    },
+    /* a conta tem movimentação (não pode ser apagada)? */
+    accUsed(id) {
+      return (
+        Store.data.transactions.some((t) => Store.txAccId(t) === id) ||
+        Store.data.transfers.some((tr) => tr.from === id || tr.to === id) ||
+        Store.data.cards.some((c) => c.accId === id)
+      );
+    },
+    removeAccount(id) {
+      if (Store.accounts().length <= 1) return false;
+      if (Store.accUsed(id)) return false;
+      Store.data.accounts = Store.data.accounts.filter((a) => a.id !== id);
+      persist();
+      return true;
+    },
+    /* saldo inicial somado — é o "caixa de partida" do Painel */
+    openingTotal() {
+      return Store.accounts().reduce((s, a) => s + (a.opening || 0), 0);
+    },
+    /* saldo de uma conta ao fim do mês (mk): soma com o caixa total */
+    accBalanceAt(accId, mk) {
+      const a = Store.account(accId);
+      if (!a) return 0;
+      let s = a.opening || 0;
+      Store.data.transactions.forEach((t) => {
+        if (t.date.slice(0, 7) > mk) return;
+        if (Store.txAccId(t) !== accId) return;
+        if (t.type === "in") s += t.amount;
+        else if (t.type === "out") s -= t.amount;
+      });
+      Store.data.transfers.forEach((tr) => {
+        if (String(tr.date || "").slice(0, 7) > mk) return;
+        if (tr.to === accId) s += tr.amount;
+        if (tr.from === accId) s -= tr.amount;
+      });
+      return s;
+    },
+    accBalances(mk) {
+      return Store.accounts().map((a) => ({ a: a, v: Store.accBalanceAt(a.id, mk) }));
+    },
+    /* transferência: NÃO é entrada nem saída — só muda de lugar */
+    addTransfer(tr) {
+      const item = Object.assign(
+        { id: "tr_" + Store.uid(), date: new Date().toISOString().slice(0, 10), note: "" },
+        tr
+      );
+      Store.data.transfers.push(item);
+      persist();
+      return item;
+    },
+    removeTransfer(id) {
+      Store.data.transfers = Store.data.transfers.filter((t) => t.id !== id);
+      persist();
+    },
+    lastTransfer() {
+      const list = Store.data.transfers.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      return list[0] || null;
     },
 
     /* ---------- cartões ---------- */
@@ -156,9 +266,16 @@
       return c;
     },
     removeCard(id) {
-      Store.data.cards = Store.data.cards.filter((c) => c.id !== id);
+      const c = Store.card(id);
+      /* para onde os lançamentos antigos passam a contar: a conta que
+         pagava este cartão (senão o saldo delas mudaria sem motivo) */
+      const alvo = c && c.accId && Store.account(c.accId) ? c.accId : Store.defaultAccId();
+      Store.data.cards = Store.data.cards.filter((x) => x.id !== id);
       Store.data.transactions.forEach((t) => {
-        if (t.cardId === id) t.cardId = null;
+        if (t.cardId === id) {
+          t.cardId = null;
+          t.accId = alvo;
+        }
       });
       persist();
     },
@@ -340,9 +457,9 @@
       const l = Store.txOfMonth(mk);
       return Store.sumIn(l) - Store.sumOut(l);
     },
-    /* o que "veio" do mês anterior: saldo inicial + histórico anterior */
+    /* o que "veio" do mês anterior: saldo inicial (somado das contas) + histórico */
     balanceBefore(mk) {
-      const inicial = Store.settings().initialBalance || 0;
+      const inicial = Store.openingTotal();
       const historico = Store.data.transactions
         .filter((t) => t.date.slice(0, 7) < mk)
         .reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
@@ -524,7 +641,9 @@
         tx: (d.transactions || []).length,
         cards: (d.cards || []).length,
         third: (d.third || []).length,
-        recs: (d.recurrences || []).length
+        recs: (d.recurrences || []).length,
+        accs: (d.accounts || []).length,
+        trf: (d.transfers || []).length
       };
     },
     markBackup() {
@@ -554,11 +673,13 @@
         parsed.budgets = {};
       if (!Array.isArray(parsed.recurrences)) parsed.recurrences = [];
       db = parsed;
+      migrate();
       persist();
       return {
         tx: db.transactions.length,
         cards: db.cards.length,
-        third: db.third.length
+        third: db.third.length,
+        accs: db.accounts.length
       };
     },
     reset() {

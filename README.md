@@ -75,14 +75,14 @@ Abra esse endereço no **PC primeiro** para conferir que carregou.
 ### Atualizar o app depois
 
 1. Antes de publicar, **suba a versão** nos dois arquivos (mesmo número):
-   - `app.js` → `APP_VERSION = "1.4.0"` e `BUILD_DATE = "06/10/2026"`
-   - `sw.js` → `const VERSION = "1.4.0"`
+   - `app.js` → `APP_VERSION = "1.5.0"` e `BUILD_DATE = "06/10/2026"`
+   - `sw.js` → `const VERSION = "1.5.0"`
 2. Repita o passo 2 (arrastar os arquivos novos → Commit changes).
    Em ~1 minuto o site atualiza.
 3. No celular, feche e abra o app (ou toque em **🔄 Verificar atualização**
    nos Ajustes) para pegar a versão nova.
 
-O número da versão aparece no topo do Painel (`.v1.4.0`) e no fim dos
+O número da versão aparece no topo do Painel (`.v1.5.0`) e no fim dos
 **Ajustes**. Quando sair versão nova, uma faixa "⬆️ Nova versão disponível"
 aparece sozinha no rodapé do app.
 
@@ -108,6 +108,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | Recurso | Descrição |
 |---|---|
 | 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber |
+| 💰 Contas | **Saldo separado por conta** (Conta, Cofrinho, Dinheiro...) + 💸 transferência e 📈 rendimento — a soma das contas é o Caixa do Painel |
 | 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
@@ -117,7 +118,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
 | 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
-| ⚙️ Ajustes | Categorias próprias, **backup exportar/importar (.json)**, saldo inicial, bloqueio, verificar atualização |
+| ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
 ### A regra de ouro dos "terceiros"
@@ -154,6 +155,40 @@ Como o app se protege:
   antes, e o conselho é exportar primeiro (assim nada se perde);
 - arquivos que não sejam backup deste app são **recusados** — não dá para
   importar um arquivo errado sem querer.
+
+---
+
+## 🏦🐷 Novidades da v1.5.0 — saldo por conta
+
+### Cada conta tem o seu saldo
+
+**⚙️ Ajustes → 💰 Contas**: renomeie, edite o **saldo inicial** de cada uma e crie
+quantas quiser (ex.: 🐷 Cofrinho, 🏦 Conta, 💵 Dinheiro, 📈 Poupança). No **Painel**,
+logo abaixo do Caixa, aparece o saldo de cada conta e o **Total** — a soma delas é
+sempre igual ao Caixa do mês.
+
+> **Regra de ouro:** transferir dinheiro **não é gasto** (só muda de lugar);
+> rendimento **é entrada** (dinheiro novo).
+
+### 💸 Transferir e 📈 Registrar rendimento
+
+Painel → **💰 Contas → 💸 transferir** abre a folha com dois modos:
+
+- **💸 Transferir** — sai de uma conta e entra em outra; o Caixa total **não muda**
+  (aparece a última movimentação embaixo das contas);
+- **📈 Rendimento** — cria uma **entrada** na categoria 📈 Rendimentos: o saldo da
+  conta **e** o Caixa sobem juntos. É como registrar quanto o cofrinho rendeu.
+
+### 💳 Cartão: de qual conta sai o dinheiro
+
+No cadastro do cartão existe o campo **Conta que paga**: as compras daquele cartão
+descontam do saldo dessa conta no mês de cada parcela — assim o saldo da sua
+bancária nunca mente.
+
+### Migração automática (ao atualizar)
+
+O "Saldo inicial" único das versões antigas virou saldo de uma conta: **o total do
+caixa não muda**. Backups antigos importam normalmente (o app separa sozinho).
 
 ---
 
@@ -246,5 +281,7 @@ a pedir esse PIN toda vez que abrir.
 - **Fase 2 — Nuvem com login:** Supabase (autenticação + banco) para sincronizar
   entre dispositivos. A camada `store.js` já está isolada: só `persist()` e
   `Store.init()` mudam — o resto do app não mexe.
-- **Fase 4 — Polimento:** ícone PNG 512×512, saldo por conta (Pix/poupança),
+- ~~**Fase 4 (início):** saldo por conta (Pix/poupança/cofrinho).~~ ✅ **Feito na
+  v1.5.0** (contas com saldo próprio, transferência e rendimento).
+- **Fase 4 — Polimento:** ícone PNG 512×512,
   busca de lançamentos, importar extrato do banco (.OFX).
