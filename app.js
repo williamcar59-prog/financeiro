@@ -137,9 +137,9 @@
     const out = Store.sumOut(list);
     const saldo = inc - out;
     const tdOpen = Store.thirdOpenSum();
-    const tdMonth = Store.data.third
-      .filter((t) => t.date.slice(0, 7) === mk)
-      .reduce((s, t) => s + t.amount, 0);
+    const before = Store.balanceBefore(mk);
+    const cash = before + saldo;
+    const prevLabel = monthLabel(addMonths(mk, -1));
     const cards = Store.cards();
     const invTotal = cards.reduce((s, c) => s + Store.cardInvoice(c.id, mk).total, 0);
 
@@ -164,20 +164,25 @@
 
     return (
       headerHome() +
-      /* saldo */
+      /* caixa acumulado */
       '<div class="card hero">' +
-      '<div class="label">Saldo de ' + esc(monthLabel(mk)) + "</div>" +
-      '<div class="value">' + fmt(saldo) + "</div>" +
+      '<div class="label">Caixa em ' + esc(monthLabel(mk)) + "</div>" +
+      '<div class="value' + (cash < 0 ? " neg" : "") + '">' + fmt(cash) + "</div>" +
+      '<div class="carry">' +
+      (before === 0
+        ? "→ Saldo anterior: nenhum (primeiro mês)"
+        : "↳ veio de " + esc(prevLabel) + ": " + fmt(before)) +
+      "</div>" +
       '<div class="row">' +
       '<div><div class="k"><i class="dot g"></i>Entradas</div><div class="v">' + fmt(inc) + "</div></div>" +
       '<div><div class="k"><i class="dot r"></i>Saídas</div><div class="v">' + fmt(out) + "</div></div>" +
-      '<div><div class="k"><i class="dot y"></i>A receber</div><div class="v">' + fmt(tdOpen) + "</div></div>" +
+      '<div><div class="k"><i class="dot b"></i>Saldo do mês</div><div class="v' + (saldo < 0 ? " neg" : "") + '">' + fmt(saldo) + "</div></div>" +
       "</div></div>" +
 
       /* indicadores */
       '<div class="grid3">' +
       mini("💳", "Faturas do mês", fmt(invTotal)) +
-      mini("👥", "Terceiros no mês", fmt(tdMonth)) +
+      mini("👥", "A receber", fmt(tdOpen), "warn") +
       mini("🧾", "Lançamentos", String(list.length)) +
       "</div>" +
 
@@ -540,8 +545,11 @@
 
       '<div class="sec-title">Resumo</div>' +
       '<div class="card stat-list">' +
+      '<div class="s"><span>Saldo anterior (' + esc(monthLabel(addMonths(cur, -1))) + ')</span><b class="' + (Store.balanceBefore(cur) < 0 ? "r" : "") + '">' + fmt(Store.balanceBefore(cur)) + "</b></div>" +
       '<div class="s"><span>Entradas do mês</span><b style="color:var(--in)">' + fmt(Store.sumIn(Store.txOfMonth(cur))) + "</b></div>" +
       '<div class="s"><span>Saídas do mês</span><b style="color:var(--out)">' + fmt(totalOut) + "</b></div>" +
+      '<div class="s"><span>Saldo do mês (o que sobrou)</span><b class="' + (Store.balanceOf(cur) < 0 ? "r" : "g") + '">' + fmt(Store.balanceOf(cur)) + "</b></div>" +
+      '<div class="s"><span><b>Caixa ao fim do mês</b></span><b class="' + (Store.cashAt(cur) < 0 ? "r" : "g") + '">' + fmt(Store.cashAt(cur)) + "</b></div>" +
       '<div class="s"><span>Maior gasto</span><b>' + (biggest ? esc(catName(biggest.catId)) + " · " + fmt(biggest.amount) : "—") + "</b></div>" +
       '<div class="s"><span>Dívidas de terceiros</span><b>' + fmt(tdOpen) + "</b></div>" +
       "</div>"
@@ -714,6 +722,7 @@
      ===================================================================== */
   function settingsSheet() {
     const cats = Store.categories();
+    const ini = Store.settings().initialBalance || 0;
     openSheet(
       "<h2>Ajustes</h2>" +
       '<div class="settings-list">' +
@@ -721,6 +730,17 @@
       '<button data-act="export">📤 Exportar backup (.json)<span class="arrow">›</span></button>' +
       '<button data-act="import">📥 Importar backup<span class="arrow">›</span></button>' +
       '<button data-act="reset">🗑️ Apagar todos os dados<span class="arrow">›</span></button>' +
+      "</div>" +
+      '<div class="sec-title">Saldo inicial (caixa de partida)</div>' +
+      '<div class="field">' +
+      '<form data-form="initial" style="display:flex;gap:8px">' +
+      '<div class="amount-wrap" style="flex:1"><span class="cur">R$</span>' +
+      '<input name="initial" inputmode="decimal" placeholder="0,00" value="' +
+      (ini ? (ini / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
+      '"></div>' +
+      '<button class="btn small" type="submit" style="align-self:center">Salvar</button>' +
+      "</form>" +
+      '<div class="hint">Dinheiro que você já tem hoje. Entra como saldo do mês anterior ao seu primeiro lançamento — assim o caixa bate com a realidade.</div>' +
       "</div>" +
       '<div class="sec-title">Categorias</div>' +
       '<div class="field"><label>Adicionar categoria</label>' +
@@ -951,6 +971,13 @@
     if (kind === "tx") return saveTx(form, fd);
     if (kind === "card") return saveCard(form, fd);
     if (kind === "third") return saveThird(form, fd);
+    if (kind === "initial") {
+      Store.setSetting("initialBalance", parseMoney(fd.get("initial")));
+      settingsSheet();
+      render();
+      toast("Saldo inicial atualizado");
+      return;
+    }
     if (kind === "cat") {
       const name = String(fd.get("name") || "").trim();
       if (!name) return;
@@ -1053,6 +1080,12 @@
   go(location.hash.slice(1) || "home");
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker
+      .register("sw.js")
+      .then(function (reg) {
+        /* força checagem de versão para não ficar preso no cache antigo */
+        reg.update();
+      })
+      .catch(function () {});
   }
 })();

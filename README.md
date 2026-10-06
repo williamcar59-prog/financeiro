@@ -99,7 +99,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 
 | Recurso | Descrição |
 |---|---|
-| 🏠 Painel | Saldo do mês, entradas × saídas, faturas, a receber |
+| 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber |
 | 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) |

@@ -42,6 +42,7 @@
       categories: DEFAULT_CATS.slice(),
       transactions: [],
       third: [],
+      settings: { initialBalance: 0 },
       createdAt: new Date().toISOString()
     };
   }
@@ -68,6 +69,7 @@
         db = seed();
       }
       if (!db.categories) db.categories = DEFAULT_CATS.slice();
+      if (!db.settings) db.settings = { initialBalance: 0 };
       return db;
     },
 
@@ -311,6 +313,34 @@
       return Store.data.third
         .filter((t) => t.status === "open")
         .reduce((s, t) => s + t.amount, 0);
+    },
+
+    /* ---------- CAIXA: saldo acumulado mês a mês ---------- */
+    settings() {
+      const d = Store.init();
+      if (!d.settings) d.settings = { initialBalance: 0 };
+      return d.settings;
+    },
+    setSetting(key, value) {
+      Store.settings()[key] = value;
+      persist();
+    },
+    /* saldo que o mês fechou (entradas - saídas do próprio mês) */
+    balanceOf(mk) {
+      const l = Store.txOfMonth(mk);
+      return Store.sumIn(l) - Store.sumOut(l);
+    },
+    /* o que "veio" do mês anterior: saldo inicial + histórico anterior */
+    balanceBefore(mk) {
+      const inicial = Store.settings().initialBalance || 0;
+      const historico = Store.data.transactions
+        .filter((t) => t.date.slice(0, 7) < mk)
+        .reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
+      return inicial + historico;
+    },
+    /* caixa em mãos ao fim do mês (saldo anterior + mês) */
+    cashAt(mk) {
+      return Store.balanceBefore(mk) + Store.balanceOf(mk);
     },
     /* gasto do mês já descontando o que é de terceiro
        (lançamentos feitos por terceiros entram em out_terceiros) */
