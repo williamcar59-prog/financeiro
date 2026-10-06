@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.1.1";
+  const APP_VERSION = "1.2.0";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -115,20 +115,26 @@
     $("#modal-root").innerHTML =
       '<div class="sheet-back" data-act="close-modal"></div><div class="sheet">' +
       '<div class="grab"></div>' + html + "</div>";
-    const f = $("#modal-root input:not([type=hidden]):not([type=radio]), #modal-root select");
+    /* foca só nos campos onde digitar é o primeiro passo — evita que o
+       teclado abra sozinho ao mexer nos Ajustes */
+    const f = $(
+      "#modal-root [data-form='tx'] input[name='amount'], " +
+        "#modal-root [data-form='third'] input[name='amount'], " +
+        "#modal-root [data-form='card'] input[name='name']"
+    );
     if (f) setTimeout(() => f.focus(), 60);
   }
   function closeSheet() {
     $("#modal-root").innerHTML = "";
     pendingConfirm = null;
   }
-  function askConfirm(title, text, fn) {
+  function askConfirm(title, text, fn, okLabel) {
     pendingConfirm = fn;
     openSheet(
       '<h2>' + esc(title) + "</h2>" +
       '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' + esc(text) + "</p>" +
       '<div class="form-actions"><button class="btn ghost" data-act="close-modal">Cancelar</button>' +
-      '<button class="btn danger" data-act="confirm-yes">Excluir</button></div>'
+      '<button class="btn danger" data-act="confirm-yes">' + esc(okLabel || "Excluir") + "</button></div>"
     );
   }
 
@@ -737,6 +743,35 @@
   /* =====================================================================
      MODAL: AJUSTES / BACKUP
      ===================================================================== */
+  /* bloco de backup dentro dos Ajustes */
+  function backupCard() {
+    const st = Store.stats();
+    const lb = Store.settings().lastBackup;
+    const dias = lb ? Math.floor((Date.now() - new Date(lb).getTime()) / 86400000) : null;
+    const velho = !lb || dias >= 7;
+    const quando = lb ? new Date(lb).toLocaleDateString("pt-BR") : "nunca";
+    const idade =
+      !lb ? "você nunca fez backup"
+      : dias === 0 ? "feito hoje"
+      : dias === 1 ? "feito ontem"
+      : "feito há " + dias + " dias";
+    return (
+      '<div class="sec-title">Backup dos seus dados</div>' +
+      '<div class="card bk">' +
+      '<div class="bk-resumo">📦 ' + st.tx + " lançamento(s) · " + st.cards + " cartão(ões) · " +
+      st.third + " pessoa(s)</div>" +
+      '<div class="bk-ultimo' + (velho && (st.tx || st.cards || st.third) ? " warn" : "") + '">' +
+      "Último export: " + quando + " <span>(" + idade + ")</span></div>" +
+      '<div class="bk-btns">' +
+      '<button class="btn" data-act="export">📤 Exportar</button>' +
+      '<button class="btn ghost" data-act="import">📥 Importar</button>' +
+      "</div>" +
+      '<div class="bk-dica">Exportar gera um arquivo <b>.json</b> com tudo — envie para o Google Drive, ' +
+      "WhatsApp ou Arquivos do celular. Para trocar de aparelho, é só Importar lá.</div>" +
+      "</div>"
+    );
+  }
+
   function settingsSheet() {
     const cats = Store.categories();
     const ini = Store.settings().initialBalance || 0;
@@ -745,10 +780,8 @@
       '<div class="settings-list">' +
       '<button data-act="install">📲 Instalar no celular<span class="arrow">›</span></button>' +
       '<button data-act="check-update">🔄 Verificar atualização<span class="arrow">›</span></button>' +
-      '<button data-act="export">📤 Exportar backup (.json)<span class="arrow">›</span></button>' +
-      '<button data-act="import">📥 Importar backup<span class="arrow">›</span></button>' +
-      '<button data-act="reset">🗑️ Apagar todos os dados<span class="arrow">›</span></button>' +
       "</div>" +
+      backupCard() +
       '<div class="sec-title">Saldo inicial (caixa de partida)</div>' +
       '<div class="field">' +
       '<form data-form="initial" style="display:flex;gap:8px">' +
@@ -784,6 +817,9 @@
       '<div class="card" style="margin:0"><p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
       "A Fase 2 adiciona login e sincronização entre dispositivos (Supabase). Nesta versão os dados ficam somente neste aparelho — faça backup regularmente.</p>" +
       '<button class="btn ghost" data-act="close-modal">Entendi</button></div>' +
+      '<div class="settings-list danger">' +
+      '<button data-act="reset">🗑️ Apagar todos os dados deste aparelho<span class="arrow">›</span></button>' +
+      "</div>" +
       '<div class="app-version">Finanças · versão ' + APP_VERSION + " · publicado em " +
       BUILD_DATE + "</div>" +
       '<input type="file" id="importFile" accept="application/json,.json" hidden>'
@@ -955,34 +991,79 @@
       toast("Categoria removida");
     },
     export() {
-      const blob = new Blob([Store.exportJSON()], { type: "application/json" });
+      const texto = Store.exportJSON();
+      const nome = "backup-financas-" + today() + ".json";
+      const arquivo = new File([texto], nome, { type: "application/json" });
+
+      /* celular: abre a folha do Android — manda direto para o Google Drive,
+         WhatsApp, E-mail ou Arquivos do aparelho */
+      if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+        navigator
+          .share({ files: [arquivo], title: "Backup Minha Vida Financeira" })
+          .then(() => {
+            Store.markBackup();
+            settingsSheet();
+            toast("Backup compartilhado ✓");
+          })
+          .catch(() => {
+            settingsSheet();
+            toast("Exportação cancelada");
+          });
+        return;
+      }
+
+      /* PC / navegador sem compartilhamento: baixa o arquivo */
+      const blob = new Blob([texto], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "backup-financas-" + today() + ".json";
+      a.download = nome;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 3000);
-      toast("Backup exportado");
+      Store.markBackup();
+      settingsSheet();
+      toast("Backup salvo: " + nome);
     },
     import() {
-      const inp = $("#importFile");
-      if (!inp) return;
-      inp.onchange = () => {
-        const f = inp.files[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onload = () => {
-          try {
-            Store.importJSON(r.result);
-            closeSheet();
-            render();
-            toast("Backup importado ✓");
-          } catch (e) {
-            toast("Arquivo inválido");
-          }
+      const st = Store.stats();
+      const abrir = () => {
+        /* reabre os Ajustes para o input de arquivo existir no DOM */
+        settingsSheet();
+        const inp = $("#importFile");
+        if (!inp) return;
+        inp.onchange = () => {
+          const f = inp.files[0];
+          if (!f) { settingsSheet(); return; }
+          const r = new FileReader();
+          r.onload = () => {
+            try {
+              const res = Store.importJSON(r.result);
+              closeSheet();
+              render();
+              toast("Backup importado ✓ " + res.tx + " lançamentos");
+            } catch (e) {
+              settingsSheet();
+              toast("Arquivo inválido — use um backup .json deste app");
+            }
+          };
+          r.onerror = () => { settingsSheet(); toast("Não foi possível ler o arquivo"); };
+          r.readAsText(f);
         };
-        r.readAsText(f);
+        inp.oncancel = () => settingsSheet();
+        inp.click();
       };
-      inp.click();
+
+      if (st.tx || st.cards || st.third) {
+        askConfirm(
+          "Importar backup?",
+          "O arquivo escolhido vai SUBSTITUIR tudo o que está neste aparelho (" +
+            st.tx + " lançamentos, " + st.cards + " cartões, " + st.third +
+            " pessoas). Se quiser guardar o que tem agora, cancele e exporte primeiro.",
+          abrir,
+          "Substituir tudo"
+        );
+      } else {
+        abrir();
+      }
     },
     reset() {
       askConfirm("Apagar tudo?", "Todos os lançamentos, cartões e terceiros serão perdidos.",
@@ -1140,6 +1221,30 @@
 
   window.addEventListener("hashchange", () => go(location.hash.slice(1)));
   go(location.hash.slice(1) || "home");
+
+  /* lembrete de backup: se passar 7 dias sem exportar, avisa uma vez por dia */
+  (function lembreteBackup() {
+    try {
+      if (location.protocol.indexOf("http") !== 0) return;
+      const st = Store.stats();
+      if (!st.tx && !st.cards && !st.third) return;
+      const lb = Store.settings().lastBackup;
+      const dias = lb ? Math.floor((Date.now() - new Date(lb).getTime()) / 86400000) : 0;
+      if (lb && dias < 7) return;
+      const hoje = today();
+      if (localStorage.getItem("fin_aviso_backup") === hoje) return;
+      localStorage.setItem("fin_aviso_backup", hoje);
+      setTimeout(
+        () =>
+          toast(
+            lb
+              ? "Faz " + dias + " dias sem exportar backup ⚙️"
+              : "Você ainda não fez backup ⚙️ Ajustes"
+          ),
+        2600
+      );
+    } catch (e) {}
+  })();
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     navigator.serviceWorker

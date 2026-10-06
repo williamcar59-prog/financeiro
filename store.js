@@ -349,17 +349,45 @@
     },
 
     /* ---------- backup ---------- */
+    /* resumo do que existe hoje (para mostrar antes de exportar/importar) */
+    stats() {
+      const d = Store.init();
+      return {
+        tx: (d.transactions || []).length,
+        cards: (d.cards || []).length,
+        third: (d.third || []).length
+      };
+    },
+    markBackup() {
+      Store.settings().lastBackup = new Date().toISOString();
+      persist();
+    },
     exportJSON() {
       return JSON.stringify(db, null, 2);
     },
     importJSON(text) {
-      const parsed = JSON.parse(text);
-      if (!parsed || typeof parsed !== "object" || !parsed.transactions)
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Arquivo inválido — não é um backup .json");
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
         throw new Error("Arquivo inválido");
+      if (!Array.isArray(parsed.transactions))
+        throw new Error("Não parece um backup deste app");
+      if (!Array.isArray(parsed.cards)) parsed.cards = [];
+      if (!Array.isArray(parsed.third)) parsed.third = [];
+      if (!Array.isArray(parsed.categories)) parsed.categories = DEFAULT_CATS.slice();
+      if (!parsed.settings || typeof parsed.settings !== "object") parsed.settings = { initialBalance: 0 };
+      if (typeof parsed.settings.initialBalance !== "number") parsed.settings.initialBalance = 0;
       db = parsed;
-      if (!db.categories) db.categories = DEFAULT_CATS.slice();
       persist();
-      return true;
+      return {
+        tx: db.transactions.length,
+        cards: db.cards.length,
+        third: db.third.length
+      };
     },
     reset() {
       db = seed();

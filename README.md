@@ -113,7 +113,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) |
 | 👥 Terceiros | Quem comprou **com o seu cartão**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
-| ⚙️ Ajustes | Categorias próprias, backup **exportar/importar** (.json) |
+| ⚙️ Ajustes | Categorias próprias, **backup exportar/importar (.json)**, saldo inicial, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
 ### A regra de ouro dos "terceiros"
@@ -128,6 +128,28 @@ Quando alguém compra **usando o seu cartão**, registre em **Terceiros**:
 
 Neste aparelho, no `localStorage` do navegador — ninguém mais acessa.
 Por isso: **⚙️ Ajustes → Exportar backup** de vez em quando.
+
+### 💾 Backup: exportar e importar
+
+**Exportar (fazer o backup)** — ⚙️ Ajustes → 📤 **Exportar**:
+
+- no celular abre a folha do Android: mande o arquivo para **Google Drive,
+  WhatsApp, E-mail ou Arquivos do aparelho**;
+- no PC ele é baixado como `backup-financas-AAAA-MM-DD.json`;
+- guarde em **dois lugares** (nuvem + PC, por exemplo).
+
+**Importar (restaurar)** — ⚙️ Ajustes → 📥 **Importar** e escolha o arquivo.
+É o que você faz ao **trocar de celular** ou depois de apagar os dados.
+
+Como o app se protege:
+
+- o cartão de backup mostra **quantos lançamentos, cartões e pessoas** existem e
+  **quando foi o último export** (fica laranja se passar de 7 dias);
+- se fizer 7 dias sem exportar, aparece **um aviso por dia** — só avisar;
+- importar **substitui** os dados do aparelho: a confirmação mostra os números
+  antes, e o conselho é exportar primeiro (assim nada se perde);
+- arquivos que não sejam backup deste app são **recusados** — não dá para
+  importar um arquivo errado sem querer.
 
 ---
 
