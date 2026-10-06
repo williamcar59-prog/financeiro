@@ -6,6 +6,11 @@
 
   Store.init();
 
+  /* ---------------- versão do app ----------------
+     >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
+  const APP_VERSION = "1.1.0";
+  const BUILD_DATE = "06/10/2026"; /* data da publicação */
+
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -205,7 +210,9 @@
 
   function headerHome() {
     return (
-      '<div class="top"><div><h1>Olá! 👋</h1><div class="sub">Visão geral de ' + esc(monthLabel(state.month)) + "</div></div>" +
+      '<div class="top"><div><h1>Olá! 👋</h1><div class="sub">Visão geral de ' +
+      esc(monthLabel(state.month)) +
+      '<span class="ver">v' + APP_VERSION + "</span></div></div>" +
       '<div style="display:flex;gap:8px;align-items:center">' +
       monthNav() +
       '<button class="icon-btn" data-act="settings" aria-label="Ajustes">⚙️</button>' +
@@ -727,6 +734,7 @@
       "<h2>Ajustes</h2>" +
       '<div class="settings-list">' +
       '<button data-act="install">📲 Instalar no celular<span class="arrow">›</span></button>' +
+      '<button data-act="check-update">🔄 Verificar atualização<span class="arrow">›</span></button>' +
       '<button data-act="export">📤 Exportar backup (.json)<span class="arrow">›</span></button>' +
       '<button data-act="import">📥 Importar backup<span class="arrow">›</span></button>' +
       '<button data-act="reset">🗑️ Apagar todos os dados<span class="arrow">›</span></button>' +
@@ -766,6 +774,8 @@
       '<div class="card" style="margin:0"><p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
       "A Fase 2 adiciona login e sincronização entre dispositivos (Supabase). Nesta versão os dados ficam somente neste aparelho — faça backup regularmente.</p>" +
       '<button class="btn ghost" data-act="close-modal">Entendi</button></div>' +
+      '<div class="app-version">Finanças · versão ' + APP_VERSION + " · publicado em " +
+      BUILD_DATE + "</div>" +
       '<input type="file" id="importFile" accept="application/json,.json" hidden>'
     );
   }
@@ -801,6 +811,33 @@
   /* =====================================================================
      AÇÕES
      ===================================================================== */
+  /* ---------------- atualização do app ---------------- */
+  /* lê a versão publicada direto no sw.js (sem cache) */
+  function remoteVersion() {
+    return fetch("sw.js", { cache: "no-store" })
+      .then((r) => r.text())
+      .then((t) => {
+        const m = t.match(/VERSION\s*=\s*"([^"]+)"/);
+        return m ? m[1] : null;
+      })
+      .catch(() => null);
+  }
+
+  /* faixa fixa avisando que saiu versão nova */
+  function showUpdateBar(v) {
+    if (document.getElementById("update-bar")) return;
+    const bar = document.createElement("div");
+    bar.id = "update-bar";
+    bar.innerHTML =
+      '⬆️ Nova versão <b>v' + esc(v) + '</b> disponível <button type="button">Atualizar</button>';
+    bar.querySelector("button").onclick = () => {
+      bar.textContent = "Atualizando…";
+      navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+      setTimeout(() => location.reload(), 900);
+    };
+    document.body.appendChild(bar);
+  }
+
   const actions = {
     goto(el) { go(el.dataset.route); },
     month(el) { state.month = addMonths(state.month, Number(el.dataset.d)); render(); },
@@ -810,6 +847,21 @@
       render();
     },
     "close-modal"() { closeSheet(); },
+    "check-update"() {
+      closeSheet();
+      if (location.protocol.indexOf("http") !== 0) {
+        toast("Executando localmente · versão " + APP_VERSION);
+        return;
+      }
+      toast("Verificando atualização…");
+      remoteVersion().then((v) => {
+        if (!v) { toast("Não foi possível verificar agora"); return; }
+        if (v === APP_VERSION) { toast("Você já está na versão " + APP_VERSION + " ✅"); return; }
+        toast("Nova versão " + v + " encontrada! Atualizando…");
+        navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+        setTimeout(() => location.reload(), 1200);
+      });
+    },
     "confirm-yes"() {
       const fn = pendingConfirm;
       closeSheet();
@@ -1085,7 +1137,14 @@
       .then(function (reg) {
         /* força checagem de versão para não ficar preso no cache antigo */
         reg.update();
+        /* compara a versão publicada com a que está rodando */
+        remoteVersion().then(function (v) {
+          if (v && v !== APP_VERSION) showUpdateBar(v);
+        });
       })
       .catch(function () {});
+  } else {
+    /* modo local (file://) — mostra a versão uma vez por sessão */
+    console.info("Finanças v" + APP_VERSION + " (" + BUILD_DATE + ")");
   }
 })();
