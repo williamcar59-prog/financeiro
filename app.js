@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.1.1";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -210,9 +210,8 @@
 
   function headerHome() {
     return (
-      '<div class="top"><div><h1>Olá! 👋</h1><div class="sub">Visão geral de ' +
-      esc(monthLabel(state.month)) +
-      '<span class="ver">v' + APP_VERSION + "</span></div></div>" +
+      '<div class="top"><div><h1>Olá! 👋<span class="ver">v' + APP_VERSION + "</span></h1>" +
+      '<div class="sub">Visão geral de ' + esc(monthLabel(state.month)) + "</div></div>" +
       '<div style="display:flex;gap:8px;align-items:center">' +
       monthNav() +
       '<button class="icon-btn" data-act="settings" aria-label="Ajustes">⚙️</button>' +
@@ -228,10 +227,15 @@
   }
 
   function monthNav() {
+    const atual = monthLabel(state.month); /* "Outubro 2026" */
+    const p = atual.split(" ");
+    /* versão curta ("Out 2026") usada em telas estreitas — ver @media 400px */
+    const curto = p[0].slice(0, 3) + " " + (p[1] || "");
     return (
       '<div class="month-nav">' +
       '<button data-act="month" data-d="-1" aria-label="Mês anterior">‹</button>' +
-      '<span class="mlabel">' + esc(monthLabel(state.month)) + "</span>" +
+      '<span class="mlabel"><span class="lb-full">' + esc(atual) + "</span>" +
+      '<span class="lb-short">' + esc(curto) + "</span></span>" +
       '<button data-act="month" data-d="1" aria-label="Próximo mês">›</button>' +
       "</div>"
     );
@@ -369,9 +373,11 @@
     const [y, m] = mk.split("-").map(Number);
     const dClose = new Date(y, m - 1, Math.min(Number(c.closing) || 1, 28));
     const dDue = new Date(y, m - 1, Math.min(Number(c.due) || 1, 28));
+    /* cor do cartão: usa a salva ou a padrão (protege dados antigos/importados) */
+    const cor = /^#[0-9a-f]{6}$/i.test(c.color || "") ? c.color : CARD_COLORS[0];
 
     return (
-      '<div class="cc" style="background:linear-gradient(135deg,' + c.color + "," + shade(c.color) + ')">' +
+      '<div class="cc" style="background:linear-gradient(135deg,' + cor + "," + shade(cor) + ')">' +
       '<div class="cc-actions">' +
       '<button data-act="edit-card" data-id="' + c.id + '" aria-label="Editar">✏️</button>' +
       '<button data-act="del-card" data-id="' + c.id + '" aria-label="Excluir">🗑️</button>' +
@@ -396,8 +402,12 @@
   }
 
   function shade(hex) {
-    /* escurece uma cor hex em ~22% para o gradiente */
-    const n = parseInt(hex.replace("#", ""), 16);
+    /* escurece uma cor hex em ~22% para o gradiente (com fallback seguro) */
+    let h = String(hex || "").replace("#", "");
+    if (h.length === 3)
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (!/^[0-9a-f]{6}$/i.test(h)) h = "0f172a";
+    const n = parseInt(h, 16);
     const r = Math.max(0, ((n >> 16) & 255) - 56);
     const g = Math.max(0, ((n >> 8) & 255) - 56);
     const b = Math.max(0, (n & 255) - 56);
