@@ -267,6 +267,7 @@
     });
     if (!Array.isArray(db.transfers)) db.transfers = [];
     if (!Array.isArray(db.transactions)) db.transactions = [];
+    if (!Array.isArray(db.third)) db.third = [];
     /* saneamento: valor é sempre número inteiro de centavos. Evita "R$ NaN"
        na tela vindo de backup antigo/corrompido (aceita também o campo
        legado "value", usado por versões muito antigas). */
@@ -276,6 +277,28 @@
       const n = Number(bruto);
       t.amount = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
       if ("value" in t) delete t.value;
+    });
+    /* terceiros: mesmo saneamento, mais os campos do esquema antigo
+       (who → person · desc → note · value → amount · paid → status).
+       Evita "R$ NaN" e nome vazio nas listas de terceiros. */
+    db.third.forEach((t) => {
+      if (!t || typeof t !== "object") return;
+      if (t.person == null && t.who != null) t.person = t.who;
+      if ("who" in t) delete t.who;
+      if ((t.note == null || t.note === "") && t.desc != null) t.note = t.desc;
+      if ("desc" in t) delete t.desc;
+      const bruto = t.amount == null || isNaN(Number(t.amount)) ? t.value : t.amount;
+      const n = Number(bruto);
+      t.amount = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+      if ("value" in t) delete t.value;
+      if (t.status !== "paid") t.status = "open";
+      if (t.paid === true) t.status = "paid";
+      if ("paid" in t) delete t.paid;
+      if (t.status === "paid" && !t.paidAt) t.paidAt = t.date || null;
+      if (!t.person) t.person = "Sem nome";
+      if (!t.note) t.note = "";
+      if (t.cardId === undefined) t.cardId = null;
+      if (!t.createdAt) t.createdAt = t.date ? t.date + "T12:00:00.000Z" : new Date().toISOString();
     });
     if (!db.settings || typeof db.settings !== "object") db.settings = { initialBalance: 0 };
     if (typeof db.settings.initialBalance !== "number") db.settings.initialBalance = 0;

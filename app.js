@@ -8,8 +8,8 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.6.5";
-  const BUILD_DATE = "06/10/2026"; /* data da publicação */
+  const APP_VERSION = "1.6.6";
+  const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
@@ -96,8 +96,38 @@
     route: "home",
     month: monthKey(today()),
     txFilter: "all",
-    thirdFilter: "open"
+    thirdFilter: "open",
+    /* visão do menu de terceiros: "mes" (padrão) · "geral" · "p:NOME" */
+    thirdView: "mes"
   };
+
+  /* =====================================================================
+     ESCALA DA INTERFACE (Ajustes → barra deslizante)
+     Guardada por aparelho — cada celular fica do jeito do seu dono.
+     ===================================================================== */
+  const ESCALA_MIN = 80;
+  const ESCALA_MAX = 150;
+  function escalaLida() {
+    let v = 0;
+    try { v = Number(localStorage.getItem("fin_escala")); } catch (e) { v = 0; }
+    if (!(v >= ESCALA_MIN && v <= ESCALA_MAX)) v = 100;
+    return v;
+  }
+  function aplicarEscala(v) {
+    v = Math.min(ESCALA_MAX, Math.max(ESCALA_MIN, Number(v) || 100));
+    /* zoom (e não transform): o conteúdo reflui como se a tela fosse
+       maior/menor, em vez de só crescer e vazar para os lados */
+    document.documentElement.style.zoom = v / 100;
+    const rot = document.getElementById("escalaVal");
+    if (rot) rot.textContent = v + "%";
+    return v;
+  }
+  function salvarEscala(v) {
+    v = aplicarEscala(v);
+    try { localStorage.setItem("fin_escala", String(v)); } catch (e) { /* sem espaço */ }
+    return v;
+  }
+  aplicarEscala(escalaLida()); /* aplica já na abertura, antes do 1º render */
   let pendingConfirm = null;
   let pendingCancel = null;
 
@@ -563,11 +593,49 @@
   /* =====================================================================
      TELA: TERCEIROS (gastos no MEU cartão)
      ===================================================================== */
+  /* nomes distintos em ordem alfabética (alimenta o menu por pessoa) */
+  function terceirosPessoas(todos) {
+    const nomes = [];
+    todos.forEach((t) => {
+      const n = (t.person || "").trim() || "Sem nome";
+      if (nomes.indexOf(n) === -1) nomes.push(n);
+    });
+    return nomes.sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }
+
+  /* menu do topo: mês (padrão) · resumo geral · pessoa escolhida */
+  function terceirosMenu(pessoas, view) {
+    const nome = view.slice(0, 2) === "p:" ? view.slice(2) : null;
+    return (
+      '<div class="field td-menu"><label for="tdview">Ver</label>' +
+      '<select id="tdview" name="tdview">' +
+      '<option value="mes"' + (view === "mes" ? " selected" : "") + ">📅 Compras do mês</option>" +
+      '<option value="geral"' + (view === "geral" ? " selected" : "") + ">📊 Resumo geral · todos os valores</option>" +
+      (pessoas.length
+        ? '<optgroup label="👤 Por pessoa">' +
+          pessoas
+            .map((p) => '<option value="p:' + esc(p) + '"' + (nome === p ? " selected" : "") + ">" + esc(p) + "</option>")
+            .join("") +
+          "</optgroup>"
+        : "") +
+      "</select></div>"
+    );
+  }
+
   function viewThird() {
     /* separado por mês — mesma navegação (‹ ›) dos lançamentos */
     const todos = Store.data.third.slice().sort((a, b) =>
       (b.date + String(b.createdAt)).localeCompare(a.date + String(a.createdAt))
     );
+    const pessoas = terceirosPessoas(todos);
+    let view = state.thirdView || "mes";
+    /* a pessoa escolhida pode ter sumido (registro apagado) — volta ao padrão */
+    if (view.slice(0, 2) === "p:" && pessoas.indexOf(view.slice(2)) === -1) view = "mes";
+    const menu = terceirosMenu(pessoas, view);
+
+    if (view === "geral") return thirdGeral(todos, pessoas, menu);
+    if (view.slice(0, 2) === "p:") return thirdPessoa(todos, view.slice(2), menu);
+
     const all = todos.filter((t) => t.date.slice(0, 7) === state.month);
     const open = all.filter((t) => t.status === "open");
     const paid = all.filter((t) => t.status === "paid");
@@ -599,6 +667,7 @@
       '<div class="sub">Compras feitas por outros no seu cartão</div></div>' +
       monthNav() +
       "</div>" +
+      menu +
 
       '<div class="card hero">' +
       '<div class="label">A receber em ' + mes + "</div>" +
@@ -610,6 +679,107 @@
       (sumOpenGeral !== sumOpen
         ? '<div class="hero-geral">Total em aberto (todos os meses): <b>' + fmt(sumOpenGeral) + "</b></div>"
         : "") +
+      "</div>" +
+
+      '<div class="chips">' +
+      chip("open", "Em aberto (" + open.length + ")", state.thirdFilter, "third") +
+      chip("paid", "Devolvidos (" + paid.length + ")", state.thirdFilter, "third") +
+      chip("all", "Todos", state.thirdFilter, "third") +
+      "</div>" +
+      body
+    );
+  }
+
+  /* ---------- visão: resumo geral (junta todos os valores, por pessoa) ---------- */
+  function thirdGeral(todos, pessoas, menu) {
+    const soma = todos.reduce((s, t) => s + t.amount, 0);
+    const open = todos.filter((t) => t.status === "open");
+    const paid = todos.filter((t) => t.status === "paid");
+    const sumOpen = open.reduce((s, t) => s + t.amount, 0);
+    const sumPaid = paid.reduce((s, t) => s + t.amount, 0);
+
+    const body = pessoas.length
+      ? '<div class="rows">' +
+        pessoas
+          .map((p) => {
+            const itens = todos.filter((t) => ((t.person || "").trim() || "Sem nome") === p);
+            const abertos = itens.filter((t) => t.status === "open");
+            const total = itens.reduce((s, t) => s + t.amount, 0);
+            const dev = abertos.reduce((s, t) => s + t.amount, 0);
+            const sub = ['<span class="pill">' + itens.length + " compra(s)</span>"];
+            sub.push(
+              dev
+                ? '<span class="status-open">a devolver ' + fmt(dev) + "</span>"
+                : '<span class="status-paid">✓ tudo devolvido</span>'
+            );
+            return (
+              '<div class="td-item td-pessoa" data-act="td-pessoa" data-p="' + esc(p) + '" role="button" tabindex="0">' +
+              '<div class="avatar">' + esc(p.slice(0, 2)) + "</div>" +
+              '<div class="row-mid"><div class="t">' + esc(p) + '</div><div class="s">' + sub.join("") + "</div></div>" +
+              '<div class="td-pessoa-val"><div class="row-val">' + fmt(total) + '</div><div class="td-total-lbl">total</div></div>' +
+              '<span class="arrow">›</span></div>'
+            );
+          })
+          .join("") +
+        "</div>" +
+        '<div class="hint" style="margin-top:10px">Toque numa pessoa para ver todas as compras dela.</div>'
+      : '<div class="empty"><div class="big">👥</div><h3>Nenhum gasto de terceiro ainda</h3>' +
+        "<p>Registre aqui quando alguém comprar usando <b>o seu cartão</b>.</p>" +
+        '<button class="btn" data-act="new-third">Novo gasto de terceiro</button></div>';
+
+    return (
+      '<div class="top"><div><h1>Gastos de terceiros</h1>' +
+      '<div class="sub">Resumo geral · todos os meses</div></div></div>' +
+      menu +
+      '<div class="card hero">' +
+      '<div class="label">Total geral de terceiros</div>' +
+      '<div class="value">' + fmt(soma) + "</div>" +
+      '<div class="row">' +
+      '<div><div class="k"><i class="dot y"></i>A receber</div><div class="v">' + fmt(sumOpen) + "</div></div>" +
+      '<div><div class="k"><i class="dot g"></i>Devolvido</div><div class="v">' + fmt(sumPaid) + "</div></div>" +
+      "</div>" +
+      '<div class="hero-geral">' + todos.length + " compra(s) · " + pessoas.length + " pessoa(s)</div>" +
+      "</div>" +
+      body
+    );
+  }
+
+  /* ---------- visão: todas as compras de uma pessoa ---------- */
+  function thirdPessoa(todos, nome, menu) {
+    const meus = todos.filter((t) => ((t.person || "").trim() || "Sem nome") === nome);
+    const open = meus.filter((t) => t.status === "open");
+    const paid = meus.filter((t) => t.status === "paid");
+    const soma = meus.reduce((s, t) => s + t.amount, 0);
+    const sumOpen = open.reduce((s, t) => s + t.amount, 0);
+    const sumPaid = paid.reduce((s, t) => s + t.amount, 0);
+
+    let list = meus;
+    if (state.thirdFilter === "open") list = open;
+    if (state.thirdFilter === "paid") list = paid;
+
+    const quem = esc(nome);
+    const body = list.length
+      ? '<div class="rows">' + list.map(rowThird).join("") + "</div>"
+      : '<div class="empty"><div class="big">👥</div><h3>' +
+        (state.thirdFilter === "paid"
+          ? "Nada devolvido de " + quem
+          : state.thirdFilter === "open"
+            ? quem + " não deve nada"
+            : "Nada registrado de " + quem) +
+        "</h3><p>Use os filtros acima para ver as outras compras de " + quem + ".</p></div>";
+
+    return (
+      '<div class="top"><div><h1>Gastos de terceiros</h1>' +
+      '<div class="sub">Todas as compras de ' + quem + " · todos os meses</div></div></div>" +
+      menu +
+      '<div class="card hero">' +
+      '<div class="label">Total de ' + quem + "</div>" +
+      '<div class="value">' + fmt(soma) + "</div>" +
+      '<div class="row">' +
+      '<div><div class="k"><i class="dot y"></i>A receber</div><div class="v">' + fmt(sumOpen) + "</div></div>" +
+      '<div><div class="k"><i class="dot g"></i>Devolvido</div><div class="v">' + fmt(sumPaid) + "</div></div>" +
+      "</div>" +
+      '<div class="hero-geral">' + meus.length + " compra(s) · todos os meses</div>" +
       "</div>" +
 
       '<div class="chips">' +
@@ -1304,6 +1474,18 @@
       '<button data-act="install">📲 Instalar no celular<span class="arrow">›</span></button>' +
       '<button data-act="check-update">🔄 Verificar atualização<span class="arrow">›</span></button>' +
       "</div>" +
+      '<div class="field escala-field">' +
+      "<label>📐 Tamanho da tela · <b id=\"escalaVal\">" + escalaLida() + "%</b></label>" +
+      '<div class="escala-row">' +
+      '<span class="escala-lbl">A−</span>' +
+      '<input type="range" name="escala" min="' + ESCALA_MIN + '" max="' + ESCALA_MAX + '" step="5" value="' +
+      escalaLida() + '" aria-label="Tamanho da tela">' +
+      '<span class="escala-lbl">A+</span>' +
+      "</div>" +
+      '<div class="hint">Arraste para deixar o aplicativo maior ou menor neste aparelho. ' +
+      "O ajuste vale só para o celular de quem mexeu.</div>" +
+      '<button class="btn ghost small" data-act="escala-reset" style="margin-top:8px">Voltar ao padrão (100%)</button>' +
+      "</div>" +
       backupCard() +
       lockSection() +
       '<div class="sec-title">💰 Contas (dinheiro separado)</div>' +
@@ -1532,6 +1714,19 @@
       if (el.dataset.kind === "tx") state.txFilter = el.dataset.f;
       else state.thirdFilter = el.dataset.f;
       render();
+    },
+    /* resumo geral → toque numa pessoa abre as compras dela */
+    "td-pessoa"(el) {
+      state.thirdView = "p:" + el.dataset.p;
+      state.thirdFilter = "all";
+      render();
+    },
+    /* restaura o tamanho da tela para o padrão (100%) */
+    "escala-reset"() {
+      salvarEscala(100);
+      const inp = document.querySelector('[name="escala"]');
+      if (inp) inp.value = 100;
+      toast("Tamanho restaurado para o padrão");
     },
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
@@ -1859,11 +2054,20 @@
     )
       syncParcelas(e.target.closest("form"));
     if (e.target.name === "modo") syncMove(e.target.closest("form"));
+    /* menu de visão da tela de Terceiros (mês · resumo geral · pessoa) */
+    if (e.target.name === "tdview") {
+      state.thirdView = e.target.value;
+      render();
+    }
+    /* barra deslizante de tamanho da tela (Ajustes) — grava ao soltar */
+    if (e.target.name === "escala") salvarEscala(e.target.value);
   });
 
   /* a prévia do parcelamento acompanha o valor enquanto digita */
   document.addEventListener("input", (e) => {
     if (e.target.name === "amount") syncParcelas(e.target.closest("form"));
+    /* escala da interface muda em tempo real enquanto arrasta */
+    if (e.target.name === "escala") aplicarEscala(e.target.value);
   });
 
   document.addEventListener("click", (e) => {

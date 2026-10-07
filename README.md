@@ -118,12 +118,12 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
-| 👥 Terceiros | **Filtro por mês (‹ ›)**, quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
+| 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
 | 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
-| ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
+| ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **📐 tamanho da tela (barra deslizante 80–150%)**, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
 ### A regra de ouro dos "terceiros"
@@ -307,6 +307,32 @@ A tela de **Terceiros** ganhou a mesma navegação de mês dos **Lançamentos**
   selecionado, e o mês vazio avisa `Nenhuma dívida em aberto em março 2027`;
 - o **＋** virou o mesmo botão flutuante dos Lançamentos (canto inferior
   direito), deixando o cabeçalho idêntico ao da outra tela.
+
+### 🍔 Menu de visão nos Terceiros + tamanho da tela ajustável (v1.6.6)
+
+Logo abaixo do cabeçalho de **Terceiros** agora há um menu **"Ver"** com três
+jeitos de olhar os mesmos dados:
+
+- **📅 Compras do mês** — o comportamento da v1.6.5 (padrão);
+- **📊 Resumo geral · todos os valores** — junta **tudo** em um cartão só
+  (Total geral · A receber · Devolvido · `N compra(s) · M pessoa(s)`) e lista
+  **uma linha por pessoa** com a soma das compras dela e o que ela ainda te
+  deve; tocar na pessoa abre a visão dela;
+- **👤 Nome da pessoa** — todas as compras daquela pessoa **de todos os
+  meses**, com o **valor total** no cartão (A receber / Devolvido / `N
+  compra(s)`) e os mesmos filtros Em aberto / Devolvidos / Todos.
+
+A navegação de mês some nessas duas últimas visões (valem todos os meses).
+
+**⚙️ Ajustes → 📐 Tamanho da tela**: barra deslizante de **80% a 150%** que
+deixa o aplicativo inteiro maior ou menor **naquele aparelho** (ajuste por
+celular, guardado no próprio telefone) + botão **Voltar ao padrão (100%)**.
+Serve para adaptar o app a celulares de tamanhos diferentes e ao gosto de cada
+um.
+
+Também nessa versão: **migração dos registros antigos de terceiros**
+(campos `who/desc/value` viram `person/note/amount`), eliminando um
+`R$ NaN` que aparecia em listas criadas em versões muito antigas.
 
 **Como ficar com o caixa certo** — regra única do app:
 

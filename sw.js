@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.6.5";
+const VERSION = "1.6.6";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",

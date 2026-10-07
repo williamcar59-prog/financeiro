@@ -726,6 +726,51 @@ body.nao-logado #app { display: none; }
 #parcPreview { min-height: 17px; }
 .hint.strong { font-weight: 600; color: var(--ink); }
 
+/* ---------- Terceiros: menu de visão + linhas por pessoa ---------- */
+.td-menu { margin: 2px 0 12px; }
+.td-menu select { font-weight: 600; }
+.td-item.td-pessoa { width: 100%; text-align: left; background: none; }
+.td-item.td-pessoa:active { background: var(--bg); }
+.td-pessoa .arrow { color: var(--ink-3); font-size: 20px; font-weight: 700; }
+.td-pessoa-val { text-align: right; flex-shrink: 0; }
+.td-total-lbl { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+
+/* ---------- Ajustes: barra deslizante de tamanho da tela ---------- */
+.escala-field { margin-top: 4px; }
+.escala-row { display: flex; align-items: center; gap: 10px; }
+.escala-lbl { font-size: 13px; font-weight: 700; color: var(--ink-2); flex-shrink: 0; }
+.escala-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  outline: none;
+  padding: 0;
+  border: none;
+}
+.escala-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 3px solid #fff;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.escala-row input[type="range"]::-moz-range-thumb {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 3px solid #fff;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.escala-row input[type="range"]:focus-visible { box-shadow: 0 0 0 3px var(--brand-soft); }
+
 /* ============ v1.6.4: total da compra ao lado da parcela ============ */
 .pill.total-pill {
   background: rgba(0, 0, 0, 0.06);
