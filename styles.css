@@ -840,6 +840,125 @@ body.nao-logado #app { display: none; }
   padding: 0;
 }
 
+/* ============ v1.8.0: comparativo, agrupamento, QR e comparação ============ */
+/* comparativo do mês no cartão do Painel */
+.cmp {
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.cmp.ok { color: var(--in); border-color: rgba(22, 163, 74, 0.35); background: rgba(22, 163, 74, 0.08); }
+.cmp.bad { color: var(--out); border-color: rgba(225, 29, 72, 0.35); background: rgba(225, 29, 72, 0.07); }
+.cmp b { font-weight: 800; }
+
+/* agrupar lançamentos: por dia × por categoria */
+.agrup-row { display: flex; gap: 8px; margin: 0 0 12px; }
+.agrup-btn {
+  flex: 1;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.agrup-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+/* rótulo do grupo quando a lista está por categoria */
+.day-label.gl-cat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-transform: none;
+}
+.day-label.gl-cat .gl-val { color: var(--ink-2); font-weight: 700; }
+
+/* terceiros: botão de marcar vários */
+.td-massa { display: flex; justify-content: flex-end; margin: -2px 0 10px; }
+.td-massa .btn { width: auto; }
+
+/* relatórios: comparação de dois meses lado a lado */
+.cmp-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cmp-col {
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 11px 12px;
+}
+.cmp-col .h {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 7px;
+}
+.cmp-col .r {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13.5px;
+  padding: 3px 0;
+}
+.cmp-col .r span { color: var(--ink-3); }
+.cmp-col .r b.in { color: var(--in); }
+.cmp-col .r b.out { color: var(--out); }
+.cmp-diff {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.cmp-diff.ok { color: var(--in); border-color: rgba(22, 163, 74, 0.35); }
+.cmp-diff.bad { color: var(--out); border-color: rgba(225, 29, 72, 0.35); }
+.cmp-diff b { font-weight: 800; }
+
+/* subtítulo dentro de um cartão (detalhe da categoria) */
+.sec-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 14px 2px 7px;
+}
+
+/* compartilhar: QR Code + link */
+.share-card { text-align: center; }
+.qr-img {
+  display: block;
+  margin: 4px auto 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 8px;
+  background: #fff;
+}
+.qr-semnet { font-size: 13px; color: var(--ink-2); margin: 6px 0 10px; }
+.qr-url {
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.share-btns { justify-content: center; }
+
 /* ============ v1.6.4: total da compra ao lado da parcela ============ */
 .pill.total-pill {
   background: rgba(0, 0, 0, 0.06);

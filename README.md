@@ -112,20 +112,20 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 
 | Recurso | Descrição |
 |---|---|
-| 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber |
+| 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber, **comparativo com o mês anterior (gastei X% a mais/a menos)** |
 | 💰 Contas | **Saldo separado por conta** (Conta, Cofrinho, Dinheiro...) + 💸 transferência e 📈 rendimento — a soma das contas é o Caixa do Painel |
-| 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo, **🔍 busca em todos os meses** |
+| 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo, **🔍 busca em todos os meses**, **agrupar por dia 📅 ou por categoria 🏷️ (com total)** |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
-| 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, **filtro por pessoa no mês**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
-| 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
+| 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, **filtro por pessoa no mês**, **✅ marcar todos como devolvidos de uma vez (com ↩ desfazer)**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
+| 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias, **filtro por categoria (com detalhe mês a mês)** e **⚖️ comparação de dois meses lado a lado** |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
 | 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
 | 🔐 Exclusão segura | **↩ Desfazer** em toda exclusão + escolha entre **só esta parcela** ou **a compra inteira** |
 | 🔔 Avisos | Notificação no celular quando a **fatura está para vencer (3 dias)** + aviso de teste (⚙️ Ajustes) |
-| ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **📐 tamanho da tela (barra deslizante 80–150%)**, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
+| ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **📐 tamanho da tela (barra deslizante 80–150%)**, **📱 compartilhar (QR Code + link)**, **🔔 avisos de vencimento**, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
 ### A regra de ouro dos "terceiros"
@@ -360,6 +360,30 @@ Também nessa versão: **migração dos registros antigos de terceiros**
   app minimizado) além do aviso interno. Tem **aviso de teste** para conferir.
   Limite honesto: sem servidor de push, o aviso depende do app estar aberto
   ou instalado — não é igual a notificação de banco.
+
+### ⚡ Comparativos, agrupamento e QR Code (v1.8.0)
+
+- **Comparativo no Painel** — o cartão do Caixa agora mostra a linha
+  **"👇 Gastos 12% a menos que em setembro · R$ 304,25 vs R$ 346,00"**
+  (verde quando gastou menos, vermelho quando gastou mais). Comparação
+  automática com o mês anterior.
+- **⚖️ Comparar dois meses lado a lado (Relatórios)** — escolha na lista
+  "Comparar outubro com…" um dos últimos 12 meses e veja as duas colunas
+  (entradas · saídas · saldo) com a diferença logo abaixo.
+- **Filtro por categoria nos Relatórios** — seletor **Categoria** acima de
+  "Onde foi o dinheiro": o ranking mostra só aquela categoria e abre um
+  **detalhe** com gasto do mês, média de 6 meses, maior mês, gráfico
+  mês a mês e a lista dos gastos dela no mês.
+- **🏷️ Agrupar lançamentos por categoria** — botões **📅 Por dia / 🏷️ Por
+  categoria** abaixo dos filtros: em vez de dias, vira um grupo por categoria
+  já com o total (Maior valor primeiro). Volta para "por dia" quando quiser.
+- **✅ Marcar todos como devolvidos (Terceiros)** — botão novo embaixo dos
+  chips: marca **todos os registros em aberto do mês** (ou de uma pessoa)
+  como "Já devolvido" de uma vez, com confirmação e **↩ Desfazer**.
+- **📱 Compartilhar o app (novo em ⚙️ Ajustes)** — mostra o **QR Code** do
+  aplicativo + o link, com botões **📤 Compartilhar** (abre o WhatsApp etc.
+  no celular) e **📋 Copiar link**. É o jeito mais rápido de instalar em
+  outro aparelho: aponta a câmera e pronto.
 
 **Como ficar com o caixa certo** — regra única do app:
 

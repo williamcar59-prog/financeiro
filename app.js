@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.7.0";
+  const APP_VERSION = "1.8.0";
   const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -102,7 +102,12 @@
     /* pessoa escolhida no filtro da visão por mês ("" = todas) */
     thirdPerson: "",
     /* busca de lançamentos (lupa) */
-    busca: ""
+    busca: "",
+    /* agrupamento da lista: "dia" (padrão) · "cat" (por categoria) */
+    txAgrup: "dia",
+    /* relatórios: categoria em destaque ("" = todas) e mês de comparação */
+    repCat: "",
+    repCmp: ""
   };
 
   /* =====================================================================
@@ -292,6 +297,27 @@
   /* =====================================================================
      TELA: PAINEL
      ===================================================================== */
+  /* comparativo simples: saídas deste mês vs saídas do mês anterior */
+  function cmpMesHtml(out) {
+    const prev = addMonths(state.month, -1);
+    const prevOut = Store.sumOut(Store.txOfMonth(prev));
+    if (!prevOut && !out) return "";            /* nada a comparar */
+    if (!prevOut)
+      return '<div class="cmp">📈 Primeiro mês com gastos registrados — sem comparação ainda</div>';
+    const rot = monthLabel(prev);
+    const d = out - prevOut;
+    const pct = Math.round((Math.abs(d) / prevOut) * 100);
+    if (pct < 1)
+      return '<div class="cmp">↔️ Gastos praticamente iguais aos de ' + esc(rot) +
+        " · " + fmt(out) + "</div>";
+    const menos = d < 0;
+    return (
+      '<div class="cmp ' + (menos ? "ok" : "bad") + '">' +
+      (menos ? "👇" : "👆") + " Gastos <b>" + pct + "% " + (menos ? "a menos" : "a mais") +
+      "</b> que em " + esc(rot) + " · " + fmt(out) + " vs " + fmt(prevOut) + "</div>"
+    );
+  }
+
   function viewHome() {
     const mk = state.month;
     const list = Store.txOfMonth(mk);
@@ -342,7 +368,9 @@
       '<div><div class="k"><i class="dot g"></i>Entradas</div><div class="v">' + fmt(inc) + "</div></div>" +
       '<div><div class="k"><i class="dot r"></i>Saídas</div><div class="v">' + fmt(out) + "</div></div>" +
       '<div><div class="k"><i class="dot b"></i>Saldo do mês</div><div class="v' + (saldo < 0 ? " neg" : "") + '">' + fmt(saldo) + "</div></div>" +
-      "</div></div>" +
+      "</div>" +
+      cmpMesHtml(out) +
+      "</div>" +
 
       /* contas: saldo separado de cada uma (soma = caixa acima) */
       '<div class="sec-title">💰 Contas <button data-act="move">💸 transferir</button></div>' +
@@ -471,6 +499,8 @@
 
     const groups = {};
     list.forEach((t) => (groups[t.date] = groups[t.date] || []).push(t));
+    /* agrupamento escolhido: por dia (padrão) ou por categoria */
+    const porCat = state.txAgrup === "cat";
 
     let body = "";
     if (!list.length) {
@@ -482,6 +512,33 @@
         : '<div class="empty"><div class="big">🗒️</div><h3>Nada por aqui</h3>' +
           "<p>Nenhum lançamento em " + esc(monthLabel(state.month)) +
           '. Toque no botão <b>+</b> para registrar uma entrada ou saída.</p></div>';
+    } else if (porCat) {
+      /* por categoria: junta pelo ícone, maior valor primeiro */
+      const byCat = {};
+      list.forEach((t) => (byCat[t.catId] = byCat[t.catId] || []).push(t));
+      body = Object.keys(byCat)
+        .sort(
+          (a, b) =>
+            byCat[b].reduce((s, t) => s + t.amount, 0) -
+            byCat[a].reduce((s, t) => s + t.amount, 0)
+        )
+        .map((id) => {
+          const itens = byCat[id];
+          const soma = itens.reduce((s, t) => s + t.amount, 0);
+          const soUmTipo = itens.every((t) => t.type === itens[0].type);
+          const val = soUmTipo
+            ? (itens[0].type === "in" ? "+" : "−") + fmt(soma)
+            : itens.length + " lançamentos";
+          return (
+            '<div class="day-group"><div class="day-label gl-cat">' +
+            "<span>" + catIcon(id) + " " + esc(catName(id)) + "</span>" +
+            '<span class="gl-val">' + esc(val) + "</span></div>" +
+            '<div class="rows">' +
+            itens.map(rowTx).join("") +
+            "</div></div>"
+          );
+        })
+        .join("");
     } else {
       body = Object.keys(groups)
         .sort()
@@ -517,6 +574,14 @@
       chip("in", "Entradas", state.txFilter, "tx") +
       chip("out", "Saídas", state.txFilter, "tx") +
       "</div>" +
+      (list.length
+        ? '<div class="agrup-row">' +
+          '<button class="agrup-btn' + (porCat ? "" : " active") +
+          '" data-act="tx-agrup" data-v="dia">📅 Por dia</button>' +
+          '<button class="agrup-btn' + (porCat ? " active" : "") +
+          '" data-act="tx-agrup" data-v="cat">🏷️ Por categoria</button>' +
+          "</div>"
+        : "") +
       body +
       recsSection()
     );
@@ -761,6 +826,31 @@
     );
   }
 
+  /* os registros em aberto do mês + pessoa filtrados na tela (v1.8.0) */
+  function terceirosAbertosFiltrados() {
+    const todos = Store.data.third;
+    const pessoas = terceirosPessoas(todos);
+    let pessoaSel = state.thirdPerson || "";
+    if (pessoaSel && pessoas.indexOf(pessoaSel) === -1) pessoaSel = "";
+    let all = todos.filter((t) => t.date.slice(0, 7) === state.month);
+    if (pessoaSel)
+      all = all.filter((t) => ((t.person || "").trim() || "Sem nome") === pessoaSel);
+    return all.filter((t) => t.status === "open");
+  }
+
+  /* alvo do "Marcar todos como devolvidos": na visão de pessoa vale para
+     todos os meses daquela pessoa; na visão de mês, só o mês + filtro */
+  function terceirosAlvoMassa() {
+    const view = state.thirdView || "mes";
+    if (view.slice(0, 2) === "p:") {
+      const quem = view.slice(2);
+      return Store.data.third.filter(
+        (t) => ((t.person || "").trim() || "Sem nome") === quem && t.status === "open"
+      );
+    }
+    return terceirosAbertosFiltrados();
+  }
+
   function viewThird() {
     /* separado por mês — mesma navegação (‹ ›) dos lançamentos */
     const todos = Store.data.third.slice().sort((a, b) =>
@@ -842,6 +932,10 @@
       chip("paid", "Devolvidos (" + paid.length + ")", state.thirdFilter, "third") +
       chip("all", "Todos", state.thirdFilter, "third") +
       "</div>" +
+      (open.length
+        ? '<div class="td-massa"><button class="btn ghost small" data-act="td-paid-all">' +
+          "✅ Marcar todos como devolvidos (" + open.length + ")</button></div>"
+        : "") +
       body
     );
   }
@@ -943,6 +1037,10 @@
       chip("paid", "Devolvidos (" + paid.length + ")", state.thirdFilter, "third") +
       chip("all", "Todos", state.thirdFilter, "third") +
       "</div>" +
+      (open.length
+        ? '<div class="td-massa"><button class="btn ghost small" data-act="td-paid-all">' +
+          "✅ Marcar todos como devolvidos (" + open.length + ")</button></div>"
+        : "") +
       body
     );
   }
@@ -1014,24 +1112,54 @@
     const totalOut = list.reduce((s, t) => s + t.amount, 0);
     const byCat = {};
     list.forEach((t) => (byCat[t.catId] = (byCat[t.catId] || 0) + t.amount));
+
+    /* gasto por categoria em cada um dos 6 meses (base do filtro) */
+    const porCat6 = {};
+    months.forEach((mk) =>
+      Store.txOfMonth(mk)
+        .filter((t) => t.type === "out")
+        .forEach((t) => (porCat6[t.catId] = (porCat6[t.catId] || 0) + t.amount))
+    );
+    /* categoria escolhida — se sumiu dos dados, volta para "Todas" */
+    let catSel = state.repCat || "";
+    if (catSel && !porCat6[catSel]) catSel = "";
+    const filtroCat =
+      Object.keys(porCat6).length > 1
+        ? '<div class="field td-menu"><label for="repcat">Categoria</label>' +
+          '<select id="repcat" name="repcat">' +
+          '<option value=""' + (catSel ? "" : " selected") + ">🏷️ Todas as categorias</option>" +
+          Object.keys(porCat6)
+            .sort((a, b) => porCat6[b] - porCat6[a])
+            .map(
+              (id) =>
+                '<option value="' + esc(id) + '"' + (catSel === id ? " selected" : "") + ">" +
+                catIcon(id) + " " + esc(catName(id)) + "</option>"
+            )
+            .join("") +
+          "</select></div>"
+        : "";
+
     const cats = Object.keys(byCat)
       .map((id) => ({ id, v: byCat[id] }))
       .sort((a, b) => b.v - a.v)
       .slice(0, 8);
 
-    const catHtml = cats.length
-      ? cats
-          .map((c) => {
-            const pct = totalOut ? Math.round((c.v / totalOut) * 100) : 0;
-            return (
-              '<div class="cat-row"><div class="top-l"><b><span class="bar-ico">' +
-              catIcon(c.id) +
-              "</span>" + esc(catName(c.id)) + "</b><span>" + fmt(c.v) + " · " + pct + "%</span></div>" +
-              '<div class="track"><i style="width:' + pct + '%"></i></div></div>'
-            );
-          })
-          .join("")
-      : '<p style="color:var(--ink-2);font-size:14px">Sem saídas registradas em ' + esc(monthLabel(cur)) + ".</p>";
+    /* uma linha do ranking (usada inteira ou só na categoria escolhida) */
+    const linhaCat = (id, v) => {
+      const pct = totalOut ? Math.round((v / totalOut) * 100) : 0;
+      return (
+        '<div class="cat-row"><div class="top-l"><b><span class="bar-ico">' +
+        catIcon(id) +
+        "</span>" + esc(catName(id)) + "</b><span>" + fmt(v) + " · " + pct + "%</span></div>" +
+        '<div class="track"><i style="width:' + pct + '%"></i></div></div>'
+      );
+    };
+
+    const catHtml = catSel
+      ? linhaCat(catSel, byCat[catSel] || 0)
+      : cats.length
+        ? cats.map((c) => linhaCat(c.id, c.v)).join("")
+        : '<p style="color:var(--ink-2);font-size:14px">Sem saídas registradas em ' + esc(monthLabel(cur)) + ".</p>";
 
     const avgOut = Math.round(data.reduce((s, d) => s + d.out, 0) / data.length);
     const avgIn = Math.round(data.reduce((s, d) => s + d.in, 0) / data.length);
@@ -1072,11 +1200,95 @@
         '<div class="card">' + orcamentos.map(orcRow).join("") + "</div>"
       : "";
 
+    /* detalhe da categoria escolhida: 6 meses + gastos do mês */
+    const detHtml = catSel
+      ? (function () {
+          const serie = months.map((mk) => ({
+            mk,
+            v: Store.txOfMonth(mk)
+              .filter((t) => t.type === "out" && t.catId === catSel)
+              .reduce((s, t) => s + t.amount, 0)
+          }));
+          const maxC = Math.max(1, ...serie.map((d) => d.v));
+          const media = Math.round(serie.reduce((s, d) => s + d.v, 0) / serie.length);
+          const maior = serie.slice().sort((a, b) => b.v - a.v)[0];
+          const itens = list.filter((t) => t.catId === catSel).sort((a, b) => b.amount - a.amount);
+          const pctMes = totalOut ? Math.round(((byCat[catSel] || 0) / totalOut) * 100) : 0;
+          return (
+            '<div class="sec-title">🔎 ' + catIcon(catSel) + " " + esc(catName(catSel)) + " · detalhe</div>" +
+            '<div class="card">' +
+            '<div class="stat-list">' +
+            '<div class="s"><span>Gasto em ' + esc(monthLabel(cur)) + "</span><b>" +
+            fmt(byCat[catSel] || 0) + " · " + pctMes + "% das saídas</b></div>" +
+            '<div class="s"><span>Média (6 meses)</span><b>' + fmt(media) + "</b></div>" +
+            '<div class="s"><span>Maior mês</span><b>' + esc(monthLabel(maior.mk)) + " · " + fmt(maior.v) + "</b></div>" +
+            "</div>" +
+            '<div class="sec-sub">Gasto mês a mês</div>' +
+            serie
+              .map((d) =>
+                '<div class="cat-row"><div class="top-l"><b>' + esc(monthLabel(d.mk)) +
+                "</b><span>" + fmt(d.v) + "</span></div>" +
+                '<div class="track"><i style="width:' + Math.round((d.v / maxC) * 100) + '%"></i></div></div>'
+              )
+              .join("") +
+            "</div>" +
+            (itens.length
+              ? '<div class="sec-sub">Gastos desta categoria em ' + esc(monthLabel(cur)) + "</div>" +
+                '<div class="rows">' + itens.map(rowTx).join("") + "</div>"
+              : '<div class="hint" style="margin-top:10px">Nenhum lançamento desta categoria no mês selecionado.</div>')
+          );
+        })()
+      : "";
+
+    /* comparação lado a lado com outro mês */
+    const opcoesCmp = [];
+    for (let i = 1; i <= 12; i++) opcoesCmp.push(addMonths(cur, -i));
+    let cmpMk = state.repCmp || addMonths(cur, -1);
+    if (opcoesCmp.indexOf(cmpMk) === -1) cmpMk = addMonths(cur, -1);
+    const linhaCmp = (mk) => {
+      const l = Store.txOfMonth(mk);
+      return { mk, in: Store.sumIn(l), out: Store.sumOut(l), saldo: Store.balanceOf(mk) };
+    };
+    const colCmp = (c) =>
+      '<div class="cmp-col"><div class="h">📅 ' + esc(monthLabel(c.mk)) + "</div>" +
+      '<div class="r"><span>Entradas</span><b class="in">' + fmt(c.in) + "</b></div>" +
+      '<div class="r"><span>Saídas</span><b class="out">' + fmt(c.out) + "</b></div>" +
+      '<div class="r"><span>Saldo</span><b class="' + (c.saldo < 0 ? "neg" : "") + '">' + fmt(c.saldo) + "</b></div>" +
+      "</div>";
+    const cA = linhaCmp(cur);
+    const cB = linhaCmp(cmpMk);
+    const dOut = cA.out - cB.out;
+    const pctOut = cB.out ? Math.round((Math.abs(dOut) / cB.out) * 100) : 0;
+    let diffTxt, diffCls = "";
+    if (!cB.out) {
+      diffTxt = "Não havia saídas registradas em " + esc(monthLabel(cmpMk)) + " para comparar";
+    } else if (pctOut < 1) {
+      diffTxt = "↔️ Saídas praticamente iguais às de " + esc(monthLabel(cmpMk)) + " · " + fmt(cA.out);
+    } else {
+      const menos = dOut < 0;
+      diffCls = menos ? "ok" : "bad";
+      diffTxt =
+        (menos ? "👇" : "👆") + " Saídas <b>" + pctOut + "% " + (menos ? "a menos" : "a mais") +
+        "</b> que em " + esc(monthLabel(cmpMk)) + " · " + fmt(cA.out) + " vs " + fmt(cB.out);
+    }
+    const cmpHtml =
+      '<div class="sec-title">⚖️ Comparar meses</div>' +
+      '<div class="field td-menu"><label for="repcmp">Comparar ' + esc(monthLabel(cur)) + " com</label>" +
+      '<select id="repcmp" name="repcmp">' +
+      opcoesCmp
+        .map((mk) => '<option value="' + mk + '"' + (mk === cmpMk ? " selected" : "") + ">" + esc(monthLabel(mk)) + "</option>")
+        .join("") +
+      "</select></div>" +
+      '<div class="cmp-card">' + colCmp(cA) + colCmp(cB) + "</div>" +
+      '<div class="cmp-diff ' + diffCls + '">' + diffTxt + "</div>";
+
     return (
       '<div class="top"><div><h1>Relatórios</h1><div class="sub">Últimos 6 meses</div></div>' +
       monthNav() + "</div>" +
 
       '<div class="card">' + chart + "</div>" +
+
+      cmpHtml +
 
       '<div class="grid3">' +
       mini("📊", "Média saídas", fmt(avgOut), "bad") +
@@ -1084,10 +1296,12 @@
       mini("👥", "A receber", fmt(tdOpen), "warn") +
       "</div>" +
 
+      filtroCat +
       '<div class="sec-title">Onde foi o dinheiro em ' + esc(monthLabel(cur)) +
       ' <button data-act="budgets">🎯 limites</button></div>' +
       '<div class="card">' + catHtml + "</div>" +
 
+      detHtml +
       entHtml +
       orcHtml +
 
@@ -1519,6 +1733,28 @@
     );
   }
 
+  /* seção: compartilhar o app (QR Code + link) */
+  function shareSection() {
+    const url = location.origin + location.pathname;
+    const qrisco = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=" +
+      encodeURIComponent(url);
+    return (
+      '<div class="sec-title">📱 Compartilhar o app</div>' +
+      '<div class="card share-card">' +
+      '<img class="qr-img" src="' + qrisco + '" width="188" height="188" alt="QR Code do aplicativo" ' +
+      'onerror="this.style.display=\'none\';var a=document.getElementById(\'qrSemNet\');if(a)a.style.display=\'block\'">' +
+      '<div class="qr-semnet" id="qrSemNet" style="display:none">Sem internet para desenhar o QR Code — use o link abaixo.</div>' +
+      '<div class="qr-url">' + esc(url) + "</div>" +
+      '<div class="bk-btns share-btns">' +
+      '<button class="btn" data-act="share">📤 Compartilhar</button>' +
+      '<button class="btn ghost" data-act="share-copy">📋 Copiar link</button>' +
+      "</div>" +
+      '<div class="bk-dica">Aponte a câmera do celular para o código QR e o app abre direto na instalação (PWA). ' +
+      "Dá também para mandar o link pelo WhatsApp.</div>" +
+      "</div>"
+    );
+  }
+
   /* seção de avisos (notificação de vencimento de fatura) */
   function notifSection() {
     const tem = "Notification" in window;
@@ -1669,6 +1905,7 @@
       '<button class="btn ghost small" data-act="escala-reset" style="margin-top:8px">Voltar ao padrão (100%)</button>' +
       "</div>" +
       notifSection() +
+      shareSection() +
       backupCard() +
       lockSection() +
       '<div class="sec-title">💰 Contas (dinheiro separado)</div>' +
@@ -1929,6 +2166,11 @@
       const inp = document.querySelector('#view [name="busca"]');
       if (inp) inp.focus();
     },
+    /* agrupamento da lista: por dia ou por categoria */
+    "tx-agrup"(el) {
+      state.txAgrup = el.dataset.v === "cat" ? "cat" : "dia";
+      render();
+    },
     /* resumo geral → toque numa pessoa abre as compras dela */
     "td-pessoa"(el) {
       state.thirdView = "p:" + el.dataset.p;
@@ -1961,6 +2203,42 @@
     "notif-test"() {
       notificar("💳 Aviso de teste", "É assim que você será avisado quando a fatura estiver para vencer.");
       toast("Aviso de teste enviado — olhe a barra do celular");
+    },
+    /* compartilhar o app (QR Code fica na seção acima) */
+    share() {
+      const url = location.origin + location.pathname;
+      if (navigator.share) {
+        navigator
+          .share({ title: "Minha Vida Financeira", text: "Meu controle financeiro no celular 📱", url: url })
+          .catch(() => {});
+        return;
+      }
+      actions["share-copy"]();
+    },
+    "share-copy"() {
+      const url = location.origin + location.pathname;
+      const ok = () => toast("Link copiado ✓");
+      /* cópia antiga, usada quando a área de transferência nova não pode */
+      const legado = () => {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = url;
+          ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const deu = document.execCommand("copy");
+          document.body.removeChild(ta);
+          deu ? ok() : toast("Não deu para copiar — selecione o link manualmente");
+        } catch (e) {
+          toast("Não deu para copiar — selecione o link manualmente");
+        }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(ok, legado);
+      } else {
+        legado();
+      }
     },
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
@@ -2161,6 +2439,32 @@
       render();
       toast(paid ? "Voltou para 'a devolver'" : "Marcado como devolvido ✓");
     },
+    /* marca VÁRIOS de uma vez (com desfazer) */
+    "td-paid-all"() {
+      const alvos = terceirosAlvoMassa();
+      if (!alvos.length) return;
+      const total = alvos.reduce((s, t) => s + t.amount, 0);
+      const noMes = (state.thirdView || "mes") === "mes";
+      const onde = noMes
+        ? " em " + monthLabel(state.month) + (state.thirdPerson ? " (" + state.thirdPerson + ")" : "")
+        : " (todos os meses)";
+      askConfirm(
+        "Marcar como devolvido" + onde + "?",
+        alvos.length + " registro(s) · " + fmt(total) +
+          " passam a \"Já devolvido\". Você pode desfazer logo em seguida.",
+        () => {
+          const antes = alvos.map((t) => ({ id: t.id, paidAt: t.paidAt || null }));
+          alvos.forEach((t) => Store.updateThird(t.id, { status: "paid", paidAt: today() }));
+          render();
+          toast(alvos.length + " marcado(s) como devolvido(s) ✓", () => {
+            antes.forEach((a) => Store.updateThird(a.id, { status: "open", paidAt: a.paidAt }));
+            render();
+            toast("Marcação desfeita ✓");
+          });
+        },
+        "Marcar todos"
+      );
+    },
     "del-third"(el) {
       const t = Store.thirdItem(el.dataset.id);
       if (!t) return;
@@ -2335,6 +2639,15 @@
     /* filtro por pessoa dentro da visão por mês */
     if (e.target.name === "tdpessoa") {
       state.thirdPerson = e.target.value;
+      render();
+    }
+    /* relatórios: categoria destacada e mês de comparação */
+    if (e.target.name === "repcat") {
+      state.repCat = e.target.value;
+      render();
+    }
+    if (e.target.name === "repcmp") {
+      state.repCmp = e.target.value;
       render();
     }
     /* barra deslizante de tamanho da tela (Ajustes) — grava ao soltar */
