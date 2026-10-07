@@ -118,7 +118,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
-| 👥 Terceiros | Quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
+| 👥 Terceiros | **Filtro por mês (‹ ›)**, quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
@@ -291,6 +291,22 @@ parcela"**), então dá para conferir antes de tocar em Adicionar.
   compra R$ 800,00` — dá para conferir os dois valores sem voltar à lista.
 - **Próximas faturas** do cartão agora incluem as parcelas de terceiros também
   (o banco cobra tudo, independentemente de quem gastou).
+
+### 📅 Terceiros separado por mês (v1.6.5)
+
+A tela de **Terceiros** ganhou a mesma navegação de mês dos **Lançamentos**
+(`‹ Outubro 2026 ›`) no cabeçalho:
+
+- a lista mostra **só as compras daquele mês** — no parcelado, cada mês traz a
+  parcela da vez (em janeiro aparece a `9/10`, em fevereiro a `10/10`);
+- o cartão de topo passa a mostrar **"A receber em outubro 2026"** com o valor
+  do mês, os lançamentos em aberto e o que já foi devolvido **naquele mês**;
+- logo abaixo, a linha **"Total em aberto (todos os meses)"** mantém o valor
+  global de quem ainda te deve (aparece só quando difere do mês);
+- os filtros **Em aberto / Devolvidos / Todos** também valem para o mês
+  selecionado, e o mês vazio avisa `Nenhuma dívida em aberto em março 2027`;
+- o **＋** virou o mesmo botão flutuante dos Lançamentos (canto inferior
+  direito), deixando o cabeçalho idêntico ao da outra tela.
 
 **Como ficar com o caixa certo** — regra única do app:
 

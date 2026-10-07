@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.6.4";
+  const APP_VERSION = "1.6.5";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -564,37 +564,53 @@
      TELA: TERCEIROS (gastos no MEU cartão)
      ===================================================================== */
   function viewThird() {
-    const all = Store.data.third.slice().sort((a, b) =>
+    /* separado por mês — mesma navegação (‹ ›) dos lançamentos */
+    const todos = Store.data.third.slice().sort((a, b) =>
       (b.date + String(b.createdAt)).localeCompare(a.date + String(a.createdAt))
     );
+    const all = todos.filter((t) => t.date.slice(0, 7) === state.month);
     const open = all.filter((t) => t.status === "open");
     const paid = all.filter((t) => t.status === "paid");
     const sumOpen = open.reduce((s, t) => s + t.amount, 0);
     const sumPaid = paid.reduce((s, t) => s + t.amount, 0);
+    /* o que falta receber contando TODOS os meses (linha extra no cartão) */
+    const sumOpenGeral = todos
+      .filter((t) => t.status === "open")
+      .reduce((s, t) => s + t.amount, 0);
 
     let list = all;
     if (state.thirdFilter === "open") list = open;
     if (state.thirdFilter === "paid") list = paid;
 
+    const mes = esc(monthLabel(state.month));
     const body = list.length
       ? '<div class="rows">' + list.map(rowThird).join("") + "</div>"
       : '<div class="empty"><div class="big">👥</div><h3>' +
-        (state.thirdFilter === "open" ? "Nenhuma dívida em aberto" : "Nada registrado") +
+        (state.thirdFilter === "paid"
+          ? "Nada devolvido em " + mes
+          : state.thirdFilter === "open"
+            ? "Nenhuma dívida em aberto em " + mes
+            : "Nada registrado em " + mes) +
         "</h3><p>Registre aqui quando alguém comprar usando <b>o seu cartão</b>. Assim você separa o que é gasto seu do gasto dos outros.</p>" +
         '<button class="btn" data-act="new-third">Novo gasto de terceiro</button></div>';
 
     return (
       '<div class="top"><div><h1>Gastos de terceiros</h1>' +
       '<div class="sub">Compras feitas por outros no seu cartão</div></div>' +
-      '<button class="icon-btn" data-act="new-third" aria-label="Novo">＋</button></div>' +
+      monthNav() +
+      "</div>" +
 
       '<div class="card hero">' +
-      '<div class="label">Total a receber de terceiros</div>' +
+      '<div class="label">A receber em ' + mes + "</div>" +
       '<div class="value">' + fmt(sumOpen) + "</div>" +
       '<div class="row">' +
       '<div><div class="k"><i class="dot y"></i>Em aberto</div><div class="v">' + open.length + " lançamento(s)</div></div>" +
       '<div><div class="k"><i class="dot g"></i>Devolvido</div><div class="v">' + fmt(sumPaid) + "</div></div>" +
-      "</div></div>" +
+      "</div>" +
+      (sumOpenGeral !== sumOpen
+        ? '<div class="hero-geral">Total em aberto (todos os meses): <b>' + fmt(sumOpenGeral) + "</b></div>"
+        : "") +
+      "</div>" +
 
       '<div class="chips">' +
       chip("open", "Em aberto (" + open.length + ")", state.thirdFilter, "third") +
@@ -1423,7 +1439,19 @@
     $$("#tabbar button").forEach((b) =>
       b.classList.toggle("active", b.dataset.route === state.route)
     );
-    $("#fab").hidden = !(state.route === "home" || state.route === "tx");
+    /* FAB: novo lançamento em Início/Lançamentos e novo gasto de terceiro em
+       Terceiros — mesma disposição das duas telas */
+    const ehTerceiros = state.route === "third";
+    $("#fab").hidden = !(
+      ehTerceiros ||
+      state.route === "home" ||
+      state.route === "tx"
+    );
+    $("#fab").dataset.act = ehTerceiros ? "new-third" : "new-tx";
+    $("#fab").setAttribute(
+      "aria-label",
+      ehTerceiros ? "Novo gasto de terceiro" : "Novo lançamento"
+    );
     if (location.hash.slice(1) !== state.route)
       history.replaceState(null, "", "#" + state.route);
   }
