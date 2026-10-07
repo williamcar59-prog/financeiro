@@ -114,15 +114,17 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 |---|---|
 | 🏠 Painel | **Caixa acumulado** (saldo que veio do mês anterior + mês atual), entradas × saídas, faturas, a receber |
 | 💰 Contas | **Saldo separado por conta** (Conta, Cofrinho, Dinheiro...) + 💸 transferência e 📈 rendimento — a soma das contas é o Caixa do Painel |
-| 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo |
+| 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo, **🔍 busca em todos os meses** |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
-| 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
+| 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, **filtro por pessoa no mês**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
 | 🔒 Bloqueio | **PIN de 4 a 6 dígitos** para abrir o app (+ digital/rosto quando o aparelho tem), código de recuperação e "Bloquear agora" |
+| 🔐 Exclusão segura | **↩ Desfazer** em toda exclusão + escolha entre **só esta parcela** ou **a compra inteira** |
+| 🔔 Avisos | Notificação no celular quando a **fatura está para vencer (3 dias)** + aviso de teste (⚙️ Ajustes) |
 | ⚙️ Ajustes | **Contas (nome, saldo inicial, nova conta)**, categorias próprias, **📐 tamanho da tela (barra deslizante 80–150%)**, **backup exportar/importar (.json)**, bloqueio, verificar atualização |
 | 📲 Instalação | Botão de instalar + funciona offline |
 
@@ -333,6 +335,31 @@ um.
 Também nessa versão: **migração dos registros antigos de terceiros**
 (campos `who/desc/value` viram `person/note/amount`), eliminando um
 `R$ NaN` que aparecia em listas criadas em versões muito antigas.
+
+### 🔐 Segurança + 🔍 busca + 🔔 avisos (v1.7.0)
+
+- **Esqueci minha senha** — link novo na tela de login (abaixo de "Criar
+  conta"). Digite o e-mail, toque no link e o Supabase manda um e-mail com o
+  link para criar outra senha. Quem não lembra do acesso por e-mail não fica
+  preso só ao Google.
+- **↩ Desfazer em toda exclusão** — ao excluir um lançamento ou um registro de
+  terceiro aparece um aviso com o botão **Desfazer** (6 segundos) que recoloca
+  o registro exatamente como estava.
+- **Só esta parcela ou a compra inteira** — ao excluir uma parcela o app pergunta:
+  **Só esta** (as demais continuam) ou **Compra inteira** (todas as parcelas,
+  total incluído) — sem apagar sem querer 10 lançamentos de uma vez.
+- **🔍 Busca nos lançamentos** — campo de busca no topo da lista que procura
+  em **todos os meses** por descrição, categoria, conta/cartão e valor; mostra
+  a data cheia em cada resultado e tem o **×** para limpar.
+- **Pessoa na visão por mês de Terceiros** — se houver mais de uma pessoa,
+  aparece o seletor **Pessoa (👥 Todas / 👤 Fulano)** logo abaixo do menu de
+  visão: filtra a lista **e o cartão "A receber"** do mês escolhido.
+- **🔔 Avisos de vencimento (novo em Ajustes)** — botão **"Ativar avisos"**
+  pede a permissão do navegador; a partir daí, quando uma fatura estiver para
+  vencer (3 dias), o celular recebe uma **notificação na barra** (mesmo com o
+  app minimizado) além do aviso interno. Tem **aviso de teste** para conferir.
+  Limite honesto: sem servidor de push, o aviso depende do app estar aberto
+  ou instalado — não é igual a notificação de banco.
 
 **Como ficar com o caixa certo** — regra única do app:
 

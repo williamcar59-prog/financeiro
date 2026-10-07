@@ -644,6 +644,16 @@
       );
       persist();
     },
+    /* desfazer: recoloca o registro exatamente como estava */
+    restoreTx(t) {
+      if (!t || Store.tx(t.id)) return;
+      Store.data.transactions.push(t);
+      persist();
+    },
+    /* todas as parcelas de uma compra (apagar a compra inteira) */
+    txGroup(gid) {
+      return Store.data.transactions.filter((t) => t.group && t.group.gid === gid);
+    },
 
     /* ---------- terceiros (gasto no MEU cartão) ---------- */
     third() {
@@ -680,6 +690,22 @@
     },
     removeThird(id) {
       Store.data.third = Store.data.third.filter((t) => t.id !== id);
+      persist();
+    },
+    /* desfazer: recoloca o registro de terceiro como estava */
+    restoreThird(t) {
+      if (!t || Store.thirdItem(t.id)) return;
+      Store.data.third.push(t);
+      persist();
+    },
+    /* todas as parcelas de uma compra de terceiro */
+    thirdGroup(gid) {
+      return Store.data.third.filter((t) => t.group && t.group.gid === gid);
+    },
+    removeThirdGroup(gid) {
+      Store.data.third = Store.data.third.filter(
+        (t) => !(t.group && t.group.gid === gid)
+      );
       persist();
     },
 
@@ -1020,6 +1046,18 @@
       saveSession(normSession(j));
       db = null;
       Store.init();
+      return true;
+    },
+
+    /* "Esqueci minha senha": manda um link de redefinição pro e-mail.
+       O Supabase responde 200 mesmo quando o e-mail não existe (não vaza
+       quem tem conta) — por isso o retorno é sempre o mesmo texto. */
+    async recover(email) {
+      await supa("/auth/v1/recover", {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({ email: email })
+      });
       return true;
     },
 

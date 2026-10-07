@@ -424,6 +424,9 @@ button {
 
 .form-actions { display: flex; gap: 10px; margin-top: 6px; }
 .form-actions .btn { flex: 1; }
+/* diálogo com 3 botões (só esta parcela × compra inteira × cancelar) */
+.form-actions.dupla { flex-wrap: wrap; }
+.form-actions.dupla .btn { flex: 1 1 45%; }
 
 /* ---------- relatórios ---------- */
 .chart {
@@ -474,7 +477,7 @@ button {
   max-width: 90%;
   text-align: center;
 }
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 
 /* ---------- versão do app ---------- */
 .top .ver {
@@ -770,6 +773,72 @@ body.nao-logado #app { display: none; }
   cursor: pointer;
 }
 .escala-row input[type="range"]:focus-visible { box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* ---------- aviso com botão "Desfazer" ---------- */
+#toast { display: flex; align-items: center; gap: 10px; }
+.toast-undo {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.toast-undo:active { background: rgba(255, 255, 255, 0.32); }
+
+/* ---------- "Esqueci minha senha" no login ---------- */
+.login-forgot {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  margin-top: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 6px;
+}
+
+/* ---------- busca dos lançamentos ---------- */
+.busca-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  padding: 0 12px;
+  margin: 2px 0 12px;
+}
+.busca-row:focus-within { border-color: var(--brand); }
+.busca-ico { font-size: 15px; opacity: 0.7; flex-shrink: 0; }
+.busca-row input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  padding: 12px 0;
+  font-size: 15px;
+}
+.busca-row input::-webkit-search-cancel-button { display: none; }
+.busca-x {
+  border: none;
+  background: var(--line);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-2);
+  flex-shrink: 0;
+  padding: 0;
+}
 
 /* ============ v1.6.4: total da compra ao lado da parcela ============ */
 .pill.total-pill {

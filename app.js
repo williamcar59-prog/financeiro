@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.6.6";
+  const APP_VERSION = "1.7.0";
   const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -98,7 +98,11 @@
     txFilter: "all",
     thirdFilter: "open",
     /* visão do menu de terceiros: "mes" (padrão) · "geral" · "p:NOME" */
-    thirdView: "mes"
+    thirdView: "mes",
+    /* pessoa escolhida no filtro da visão por mês ("" = todas) */
+    thirdPerson: "",
+    /* busca de lançamentos (lupa) */
+    busca: ""
   };
 
   /* =====================================================================
@@ -133,12 +137,63 @@
 
   /* ---------------- toast ---------------- */
   let toastTimer = null;
-  function toast(msg) {
+  let pendingUndo = null;
+  function toast(msg, undo) {
     const el = $("#toast");
-    el.textContent = msg;
-    el.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+    pendingUndo = typeof undo === "function" ? undo : null;
+    el.innerHTML = esc(msg) +
+      (pendingUndo ? ' <button class="toast-undo" data-act="toast-undo">↩ Desfazer</button>' : "");
+    el.classList.add("show");
+    /* com desfazer o aviso fica mais tempo na tela */
+    toastTimer = setTimeout(() => {
+      el.classList.remove("show");
+      pendingUndo = null;
+    }, pendingUndo ? 6000 : 2200);
+  }
+  function esconderToast() {
+    $("#toast").classList.remove("show");
+    clearTimeout(toastTimer);
+    const fn = pendingUndo;
+    pendingUndo = null;
+    return fn;
+  }
+
+  /* ---------------- notificação fora do app (Android/iOS instalado) --------------
+     O aviso só sai quando o app está aberto ou em segundo plano curto —
+     PWA não tem servidor de push. Mesmo assim ajuda: o celular mostra a
+     notificação na barra mesmo com o app minimizado. */
+  function temNotif() {
+    try {
+      return (
+        "Notification" in window &&
+        (Notification.permission === "granted" ||
+          localStorage.getItem("fin_notif") === "on")
+      );
+    } catch (e) { return false; }
+  }
+  function notificar(titulo, corpo) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const op = { body: corpo || "", icon: "icon-192.png", badge: "icon-192.png", tag: "fin" };
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then((reg) => {
+          if (reg) reg.showNotification(titulo, op);
+          else new Notification(titulo, op);
+        }).catch(() => { try { new Notification(titulo, op); } catch (e) {} });
+      } else {
+        new Notification(titulo, op);
+      }
+    } catch (e) { /* navegador não permite */ }
+  }
+  function pedirNotificacao() {
+    if (!("Notification" in window)) return Promise.resolve("unsupported");
+    if (Notification.permission === "granted") return Promise.resolve("granted");
+    if (Notification.permission === "denied") return Promise.resolve("denied");
+    return Notification.requestPermission().then((p) => {
+      try { localStorage.setItem("fin_notif", p === "granted" ? "on" : "off"); } catch (e) {}
+      return p;
+    });
   }
 
   /* ---------------- sheet (modal) ---------------- */
@@ -161,6 +216,7 @@
     const cancelou = pendingCancel;
     $("#modal-root").innerHTML = "";
     pendingConfirm = null;
+    pendingConfirm2 = null;
     pendingCancel = null;
     if (cancelou) cancelou();
   }
@@ -173,6 +229,64 @@
       '<div class="form-actions"><button class="btn ghost" data-act="close-modal">Cancelar</button>' +
       '<button class="btn danger" data-act="confirm-yes">' + esc(okLabel || "Excluir") + "</button></div>"
     );
+  }
+  /* confirmação com DOIS caminhos (ex.: "só esta parcela" ou "a compra toda") */
+  let pendingConfirm2 = null;
+  function askConfirmDuas(title, text, op1, op2) {
+    pendingConfirm2 = { op1: op1, op2: op2 };
+    openSheet(
+      '<h2>' + esc(title) + "</h2>" +
+      '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' + esc(text) + "</p>" +
+      '<div class="form-actions dupla">' +
+      '<button class="btn ghost" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn danger" data-act="confirm-a">' + esc(op1.rot) + "</button>" +
+      '<button class="btn danger" data-act="confirm-b">' + esc(op2.rot) + "</button>" +
+      "</div>"
+    );
+  }
+
+  /* =====================================================================
+     EXCLUSÃO COM "DESFAZER" (guarda uma cópia antes de apagar)
+     ===================================================================== */
+  function excluirTxCopia(copia, gid, tudo) {
+    if (tudo) {
+      const itens = Store.txGroup(gid).map((x) => Object.assign({}, x));
+      Store.removeTxGroup(gid);
+      render();
+      toast(itens.length + " parcela(s) excluída(s)", () => {
+        itens.forEach(Store.restoreTx);
+        render();
+        toast("Exclusão desfeita ✓");
+      });
+      return;
+    }
+    Store.removeTx(copia.id);
+    render();
+    toast("Lançamento excluído", () => {
+      Store.restoreTx(copia);
+      render();
+      toast("Exclusão desfeita ✓");
+    });
+  }
+  function excluirThirdCopia(copia, gid, tudo) {
+    if (tudo) {
+      const itens = Store.thirdGroup(gid).map((x) => Object.assign({}, x));
+      Store.removeThirdGroup(gid);
+      render();
+      toast(itens.length + " parcela(s) excluída(s)", () => {
+        itens.forEach(Store.restoreThird);
+        render();
+        toast("Exclusão desfeita ✓");
+      });
+      return;
+    }
+    Store.removeThird(copia.id);
+    render();
+    toast("Registro excluído", () => {
+      Store.restoreThird(copia);
+      render();
+      toast("Exclusão desfeita ✓");
+    });
   }
 
   /* =====================================================================
@@ -335,11 +449,22 @@
      TELA: LANÇAMENTOS
      ===================================================================== */
   function viewTx() {
+    const q = state.busca.trim().toLowerCase();
     let list = Store.txOfMonth(state.month);
     const inc = Store.sumIn(list);
     const out = Store.sumOut(list);
     if (state.txFilter !== "all")
       list = list.filter((t) => t.type === state.txFilter);
+    /* busca: procura em TODOS os meses (nome, categoria, conta/cartão) */
+    if (q)
+      list = Store.data.transactions.filter(
+        (t) =>
+          (state.txFilter === "all" || t.type === state.txFilter) &&
+          (String(t.note || "").toLowerCase().indexOf(q) > -1 ||
+            catName(t.catId).toLowerCase().indexOf(q) > -1 ||
+            destLabel(t).toLowerCase().indexOf(q) > -1 ||
+            (t.amount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }).indexOf(q) > -1)
+      );
     list = list.sort((a, b) =>
       (b.date + String(b.createdAt)).localeCompare(a.date + String(a.createdAt))
     );
@@ -349,10 +474,14 @@
 
     let body = "";
     if (!list.length) {
-      body =
-        '<div class="empty"><div class="big">🗒️</div><h3>Nada por aqui</h3>' +
-        "<p>Nenhum lançamento em " + esc(monthLabel(state.month)) +
-        '. Toque no botão <b>+</b> para registrar uma entrada ou saída.</p></div>';
+      body = q
+        ? '<div class="empty"><div class="big">🔍</div><h3>Nada encontrado</h3>' +
+          "<p>Nenhum lançamento com <b>“" + esc(state.busca.trim()) +
+          "”</b> — a busca olha todos os meses.</p>" +
+          '<button class="btn ghost" data-act="busca-clear">Limpar busca</button></div>'
+        : '<div class="empty"><div class="big">🗒️</div><h3>Nada por aqui</h3>' +
+          "<p>Nenhum lançamento em " + esc(monthLabel(state.month)) +
+          '. Toque no botão <b>+</b> para registrar uma entrada ou saída.</p></div>';
     } else {
       body = Object.keys(groups)
         .sort()
@@ -360,7 +489,7 @@
         .map(
           (d) =>
             '<div class="day-group"><div class="day-label">' +
-            esc(dateLabel(d)) +
+            (q ? esc(fullDate(d)) : esc(dateLabel(d))) +
             '</div><div class="rows">' +
             groups[d].map(rowTx).join("") +
             "</div></div>"
@@ -370,8 +499,18 @@
 
     return (
       '<div class="top"><div><h1>Lançamentos</h1>' +
-      '<div class="sub">Entradas ' + fmt(inc) + " · Saídas " + fmt(out) + "</div></div>" +
+      '<div class="sub">' +
+      (q
+        ? list.length + " resultado(s) para “" + esc(state.busca.trim()) + "”"
+        : "Entradas " + fmt(inc) + " · Saídas " + fmt(out)) +
+      "</div></div>" +
       monthNav() +
+      "</div>" +
+      '<div class="busca-row">' +
+      '<span class="busca-ico">🔍</span>' +
+      '<input name="busca" type="search" placeholder="Buscar em todos os meses…" value="' +
+      esc(state.busca) + '" aria-label="Buscar lançamento">' +
+      (q ? '<button class="busca-x" data-act="busca-clear" aria-label="Limpar busca">×</button>' : "") +
       "</div>" +
       '<div class="chips">' +
       chip("all", "Todos", state.txFilter, "tx") +
@@ -636,7 +775,12 @@
     if (view === "geral") return thirdGeral(todos, pessoas, menu);
     if (view.slice(0, 2) === "p:") return thirdPessoa(todos, view.slice(2), menu);
 
-    const all = todos.filter((t) => t.date.slice(0, 7) === state.month);
+    /* filtro por pessoa dentro do mês selecionado */
+    let pessoaSel = state.thirdPerson || "";
+    if (pessoaSel && pessoas.indexOf(pessoaSel) === -1) pessoaSel = "";
+    let all = todos.filter((t) => t.date.slice(0, 7) === state.month);
+    if (pessoaSel)
+      all = all.filter((t) => ((t.person || "").trim() || "Sem nome") === pessoaSel);
     const open = all.filter((t) => t.status === "open");
     const paid = all.filter((t) => t.status === "paid");
     const sumOpen = open.reduce((s, t) => s + t.amount, 0);
@@ -650,15 +794,26 @@
     if (state.thirdFilter === "open") list = open;
     if (state.thirdFilter === "paid") list = paid;
 
+    /* seletor de pessoa (só aparece se tiver mais de uma) */
+    const filtroPessoa = pessoas.length > 1
+      ? '<div class="field td-menu"><label for="tdpessoa">Pessoa</label>' +
+        '<select id="tdpessoa" name="tdpessoa">' +
+        '<option value=""' + (pessoaSel ? "" : " selected") + ">👥 Todas</option>" +
+        pessoas
+          .map((p) => '<option value="' + esc(p) + '"' + (pessoaSel === p ? " selected" : "") + ">👤 " + esc(p) + "</option>")
+          .join("") +
+        "</select></div>"
+      : "";
+
     const mes = esc(monthLabel(state.month));
     const body = list.length
       ? '<div class="rows">' + list.map(rowThird).join("") + "</div>"
       : '<div class="empty"><div class="big">👥</div><h3>' +
         (state.thirdFilter === "paid"
-          ? "Nada devolvido em " + mes
+          ? "Nada devolvido" + (pessoaSel ? " de " + esc(pessoaSel) : "") + " em " + mes
           : state.thirdFilter === "open"
-            ? "Nenhuma dívida em aberto em " + mes
-            : "Nada registrado em " + mes) +
+            ? "Nenhuma dívida em aberto" + (pessoaSel ? " de " + esc(pessoaSel) : "") + " em " + mes
+            : "Nada registrado" + (pessoaSel ? " de " + esc(pessoaSel) : "") + " em " + mes) +
         "</h3><p>Registre aqui quando alguém comprar usando <b>o seu cartão</b>. Assim você separa o que é gasto seu do gasto dos outros.</p>" +
         '<button class="btn" data-act="new-third">Novo gasto de terceiro</button></div>';
 
@@ -668,9 +823,10 @@
       monthNav() +
       "</div>" +
       menu +
+      filtroPessoa +
 
       '<div class="card hero">' +
-      '<div class="label">A receber em ' + mes + "</div>" +
+      '<div class="label">A receber em ' + mes + (pessoaSel ? " · " + esc(pessoaSel) : "") + "</div>" +
       '<div class="value">' + fmt(sumOpen) + "</div>" +
       '<div class="row">' +
       '<div><div class="k"><i class="dot y"></i>Em aberto</div><div class="v">' + open.length + " lançamento(s)</div></div>" +
@@ -1363,8 +1519,35 @@
     );
   }
 
-  /* mostra o código de recuperação logo após ativar o bloqueio */
-  function codigoSheet() {
+  /* seção de avisos (notificação de vencimento de fatura) */
+  function notifSection() {
+    const tem = "Notification" in window;
+    const perm = tem ? Notification.permission : "unsupported";
+    let status, btn;
+    if (!tem) {
+      status = "Este navegador não tem notificações.";
+      btn = "";
+    } else if (perm === "granted") {
+      status = "✅ Avisos ligados — você recebe na barra do celular quando a fatura está para vencer (3 dias).";
+      btn = '<button class="btn ghost small" data-act="notif-test">🔔 Enviar aviso de teste</button>';
+    } else if (perm === "denied") {
+      status = "🚫 Avisos bloqueados. Para liberar: toque no cadeado/ícone ao lado do endereço do site → Permissões → Notificações → Permitir.";
+      btn = "";
+    } else {
+      status = "Receba um aviso no celular quando a fatura do cartão estiver para vencer.";
+      btn = '<button class="btn" data-act="notif-on">🔔 Ativar avisos de vencimento</button>';
+    }
+    return (
+      '<div class="sec-title">🔔 Avisos</div>' +
+      '<div class="card">' +
+      '<p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' + status + "</p>" +
+      (btn ? '<div class="bk-btns">' + btn + "</div>" : "") +
+      '<div class="bk-dica">O aviso vale para faturas próximas do vencimento — e só enquanto o app estiver aberto ou instalado (PWA não tem servidor de push).</div>' +
+      "</div>"
+    );
+  }
+
+  /* mostra o código de recuperação logo após ativar o bloqueio */  function codigoSheet() {
     const cod = Store.settings().recCode || "";
     openSheet(
       "<h2>📌 Anote seu código de recuperação</h2>" +
@@ -1475,8 +1658,7 @@
       '<button data-act="check-update">🔄 Verificar atualização<span class="arrow">›</span></button>' +
       "</div>" +
       '<div class="field escala-field">' +
-      "<label>📐 Tamanho da tela · <b id=\"escalaVal\">" + escalaLida() + "%</b></label>" +
-      '<div class="escala-row">' +
+      "<label>📐 Tamanho da tela · <b id=\"escalaVal\">" + escalaLida() + "%</b></label>" +      '<div class="escala-row">' +
       '<span class="escala-lbl">A−</span>' +
       '<input type="range" name="escala" min="' + ESCALA_MIN + '" max="' + ESCALA_MAX + '" step="5" value="' +
       escalaLida() + '" aria-label="Tamanho da tela">' +
@@ -1486,6 +1668,7 @@
       "O ajuste vale só para o celular de quem mexeu.</div>" +
       '<button class="btn ghost small" data-act="escala-reset" style="margin-top:8px">Voltar ao padrão (100%)</button>' +
       "</div>" +
+      notifSection() +
       backupCard() +
       lockSection() +
       '<div class="sec-title">💰 Contas (dinheiro separado)</div>' +
@@ -1553,6 +1736,7 @@
       '<button class="btn" type="submit" name="op" value="in">Entrar</button>' +
       '<button class="btn ghost" type="submit" name="op" value="up">Criar conta</button>' +
       "</div></form>" +
+      '<button type="button" class="login-forgot" data-act="login-forgot">Esqueci minha senha</button>' +
       '<a class="login-link" href="privacidade.html" target="_blank" rel="noopener">Política de privacidade</a>' +
       "</div>"
     );
@@ -1684,6 +1868,29 @@
         if (el) el.textContent = erroLogin(e);
       });
     },
+    /* "Esqueci minha senha" — manda o link de redefinição pro e-mail */
+    "login-forgot"() {
+      const err = document.getElementById("loginErr");
+      const form = document.querySelector('form[data-form="login"]');
+      const email = form && form.email ? String(form.email.value || "").trim() : "";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        if (err) err.textContent = "Digite seu e-mail acima antes de pedir a senha";
+        if (form && form.email) form.email.focus();
+        return;
+      }
+      if (err) err.textContent = "Enviando o link…";
+      Store.auth.recover(email)
+        .then(() => {
+          if (err)
+            err.innerHTML =
+              "✅ Link enviado para <b>" + esc(email) +
+              "</b> — abra o e-mail e escolha uma nova senha. " +
+              "Se não achar, olhe a pasta <b>Spam</b>.";
+        })
+        .catch((e) => {
+          if (err) err.textContent = erroLogin(e);
+        });
+    },
     "sync-now"() {
       const el = document.getElementById("syncTxt");
       if (el) el.textContent = "Sincronizando…";
@@ -1715,6 +1922,13 @@
       else state.thirdFilter = el.dataset.f;
       render();
     },
+    /* limpa a busca da tela de Lançamentos */
+    "busca-clear"() {
+      state.busca = "";
+      render();
+      const inp = document.querySelector('#view [name="busca"]');
+      if (inp) inp.focus();
+    },
     /* resumo geral → toque numa pessoa abre as compras dela */
     "td-pessoa"(el) {
       state.thirdView = "p:" + el.dataset.p;
@@ -1727,6 +1941,26 @@
       const inp = document.querySelector('[name="escala"]');
       if (inp) inp.value = 100;
       toast("Tamanho restaurado para o padrão");
+    },
+    /* avisos de vencimento (notificação do celular) */
+    "notif-on"() {
+      pedirNotificacao().then((p) => {
+        if (p === "granted") {
+          notificar("🔔 Avisos ativados", "Você será avisado quando a fatura estiver perto do vencimento.");
+          toast("Avisos ativados ✓");
+          settingsSheet(); /* redesenha a seção com o novo estado */
+        } else if (p === "denied") {
+          toast("Permissão negada — libere nas configurações do site");
+        } else if (p === "unsupported") {
+          toast("Este navegador não tem notificações");
+        } else {
+          toast("Aviso não ativado");
+        }
+      });
+    },
+    "notif-test"() {
+      notificar("💳 Aviso de teste", "É assim que você será avisado quando a fatura estiver para vencer.");
+      toast("Aviso de teste enviado — olhe a barra do celular");
     },
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
@@ -1857,18 +2091,48 @@
       closeSheet();
       if (fn) fn();
     },
+    /* botão "↩ Desfazer" do aviso */
+    "toast-undo"() {
+      const fn = esconderToast();
+      if (fn) fn();
+    },
+    /* confirmação com dois caminhos (parcela × compra inteira) */
+    "confirm-a"() {
+      const p = pendingConfirm2;
+      pendingConfirm2 = null;
+      closeSheet();
+      if (p && p.op1.fn) p.op1.fn();
+    },
+    "confirm-b"() {
+      const p = pendingConfirm2;
+      pendingConfirm2 = null;
+      closeSheet();
+      if (p && p.op2.fn) p.op2.fn();
+    },
 
     "new-tx"() { txSheet(null); },
     "edit-tx"(el) { txSheet(el.dataset.id); },
     "del-tx"(el) {
       const t = Store.tx(el.dataset.id);
       if (!t) return;
+      /* parcela de compra: oferece apagar só ela ou a compra inteira */
+      if (t.group) {
+        const gid = t.group.gid;
+        const copia = Object.assign({}, t);
+        const total = Store.groupTotal(t);
+        askConfirmDuas(
+          "Excluir " + t.group.n + " de " + t.group.total + "?",
+          "Só esta parcela (" + fmt(t.amount) + "), ou a compra inteira de " +
+            t.group.total + "x (total " + fmt(total) + ")?",
+          { rot: "Só esta", fn: () => excluirTxCopia(copia, gid, false) },
+          { rot: "Compra inteira", fn: () => excluirTxCopia(copia, gid, true) }
+        );
+        return;
+      }
       askConfirm(
         "Excluir lançamento?",
-        t.group
-          ? "Esta parcela (" + t.group.n + " de " + t.group.total + ") será removida. As demais parcelas continuam."
-          : fmt(t.amount) + " · " + (t.note || catName(t.catId)),
-        () => { Store.removeTx(t.id); closeSheet(); render(); toast("Lançamento excluído"); }
+        fmt(t.amount) + " · " + (t.note || catName(t.catId)),
+        () => excluirTxCopia(Object.assign({}, t), null, false)
       );
     },
 
@@ -1900,14 +2164,23 @@
     "del-third"(el) {
       const t = Store.thirdItem(el.dataset.id);
       if (!t) return;
+      if (t.group) {
+        const gid = t.group.gid;
+        const copia = Object.assign({}, t);
+        askConfirmDuas(
+          "Excluir " + t.group.n + " de " + t.group.total + " de " + t.person + "?",
+          "Só esta parcela (" + fmt(t.amount) + "), ou a compra inteira de " +
+            t.group.total + "x (total " + fmt(Store.groupTotal(t)) + ")?",
+          { rot: "Só esta", fn: () => excluirThirdCopia(copia, gid, false) },
+          { rot: "Compra inteira", fn: () => excluirThirdCopia(copia, gid, true) }
+        );
+        return;
+      }
       askConfirm(
         "Excluir registro?",
-        t.group
-          ? "Esta parcela (" + t.group.n + " de " + t.group.total + ") de " +
-            t.person + " · " + fmt(t.amount) +
-            " será removida. As demais continuam."
-          : t.person + " · " + fmt(t.amount),
-        () => { Store.removeThird(t.id); closeSheet(); render(); toast("Registro excluído"); });
+        t.person + " · " + fmt(t.amount),
+        () => excluirThirdCopia(Object.assign({}, t), null, false)
+      );
     },
 
     settings() {
@@ -2059,6 +2332,11 @@
       state.thirdView = e.target.value;
       render();
     }
+    /* filtro por pessoa dentro da visão por mês */
+    if (e.target.name === "tdpessoa") {
+      state.thirdPerson = e.target.value;
+      render();
+    }
     /* barra deslizante de tamanho da tela (Ajustes) — grava ao soltar */
     if (e.target.name === "escala") salvarEscala(e.target.value);
   });
@@ -2068,6 +2346,18 @@
     if (e.target.name === "amount") syncParcelas(e.target.closest("form"));
     /* escala da interface muda em tempo real enquanto arrasta */
     if (e.target.name === "escala") aplicarEscala(e.target.value);
+    /* busca dos lançamentos: filtra enquanto digita e mantém o cursor
+       no campo (o render troca o HTML inteiro) */
+    if (e.target.name === "busca") {
+      state.busca = e.target.value;
+      render();
+      const inp = document.querySelector('#view [name="busca"]');
+      if (inp) {
+        inp.focus();
+        const v = inp.value;
+        try { inp.setSelectionRange(v.length, v.length); } catch (err) {}
+      }
+    }
   });
 
   document.addEventListener("click", (e) => {
@@ -2569,30 +2859,37 @@
       );
   } catch (e) {}
 
-  /* lembrete de vencimento de fatura (3 dias) — 1 aviso por mês */
-  try {
-    const dHoje = new Date().getDate();
-    const mk = today().slice(0, 7);
-    const perto = Store.cards().filter((c) => {
-      const dias = (Number(c.due) || 10) - dHoje;
-      return dias >= 0 && dias <= 3;
-    });
-    if (perto.length) {
-      const flag = "fin_aviso_fatura_" + mk;
-      if (localStorage.getItem(flag) !== today()) {
-        localStorage.setItem(flag, today());
-        const c = perto[0];
+  /* lembrete de vencimento de fatura (3 dias) — 1 aviso por mês.
+     Se o usuário permitiu notificações, o aviso também sai do app. */
+  function checarVencimentos() {
+    try {
+      const dHoje = new Date().getDate();
+      const mk = today().slice(0, 7);
+      const perto = Store.cards().filter((c) => {
         const dias = (Number(c.due) || 10) - dHoje;
-        setTimeout(() => {
+        return dias >= 0 && dias <= 3;
+      });
+      if (perto.length) {
+        const flag = "fin_aviso_fatura_" + mk;
+        if (localStorage.getItem(flag) !== today()) {
+          localStorage.setItem(flag, today());
+          const c = perto[0];
+          const dias = (Number(c.due) || 10) - dHoje;
           const inv = Store.cardInvoice(c.id, mk);
-          toast(
-            "💳 Fatura " + c.name +
+          const txt =
+            "Fatura " + c.name +
               (dias === 0 ? " vence HOJE" : " vence em " + dias + " dia(s)") +
-              (inv.total ? " · " + fmt(inv.total) : "")
-          );
-        }, 5600);
+              (inv.total ? " · " + fmt(inv.total) : "");
+          notificar("💳 " + txt, "Abra o app para conferir a fatura.");
+          toast("💳 " + txt);
+        }
       }
-    }
+    } catch (e) {}
+  }
+  try {
+    setTimeout(checarVencimentos, 5600);
+    /* mantém o celular avisando enquanto o app ficar aberto */
+    setInterval(checarVencimentos, 30 * 60 * 1000);
   } catch (e) {}
 
   /* lembrete de backup: se passar 7 dias sem exportar, avisa uma vez por dia */
