@@ -266,6 +266,17 @@
       if (!a.name) a.name = "Conta";
     });
     if (!Array.isArray(db.transfers)) db.transfers = [];
+    if (!Array.isArray(db.transactions)) db.transactions = [];
+    /* saneamento: valor é sempre número inteiro de centavos. Evita "R$ NaN"
+       na tela vindo de backup antigo/corrompido (aceita também o campo
+       legado "value", usado por versões muito antigas). */
+    db.transactions.forEach((t) => {
+      if (!t || typeof t !== "object") return;
+      const bruto = t.amount == null || isNaN(Number(t.amount)) ? t.value : t.amount;
+      const n = Number(bruto);
+      t.amount = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+      if ("value" in t) delete t.value;
+    });
     if (!db.settings || typeof db.settings !== "object") db.settings = { initialBalance: 0 };
     if (typeof db.settings.initialBalance !== "number") db.settings.initialBalance = 0;
     if (db.settings.initialBalance) {
