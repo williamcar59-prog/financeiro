@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.6.3";
+  const APP_VERSION = "1.6.4";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -116,6 +116,8 @@
     $("#modal-root").innerHTML =
       '<div class="sheet-back" data-act="close-modal"></div><div class="sheet">' +
       '<div class="grab"></div>' + html + "</div>";
+    /* estado inicial do parcelamento (só aparece ao escolher o cartão) */
+    syncParcelas($("#modal-root form"));
     /* foca só nos campos onde digitar é o primeiro passo — evita que o
        teclado abra sozinho ao mexer nos Ajustes */
     const f = $(
@@ -369,6 +371,9 @@
     if (t.note) sub.push(esc(catName(t.catId)));
     if (dest) sub.push('<span class="pill ' + (isCard ? "card-pill" : "") + '">' + esc(dest) + "</span>");
     if (parcela) sub.push(parcela);
+    /* parcelada: mostra também o valor TOTAL da compra ao lado da parcela */
+    if (t.group)
+      sub.push('<span class="pill total-pill">total ' + fmt(Store.groupTotal(t)) + "</span>");
 
     return (
       '<button class="row-item" data-act="edit-tx" data-id="' + t.id + '">' +
@@ -607,6 +612,11 @@
     if (t.note) sub.push(esc(t.note));
     sub.push('<span class="pill">' + esc(fullDate(t.date)) + "</span>");
     if (card) sub.push('<span class="pill card-pill">' + esc(card.name) + (card.final ? " •" + esc(card.final) : "") + "</span>");
+    /* parcelado: número da parcela e valor total da compra */
+    if (t.group) {
+      sub.push('<span class="pill parcela">' + t.group.n + "/" + t.group.total + "</span>");
+      sub.push('<span class="pill total-pill">total ' + fmt(Store.groupTotal(t)) + "</span>");
+    }
     sub.push('<span class="' + (isPaid ? "status-paid" : "status-open") + '">' + (isPaid ? "✓ devolvido" : "a devolver") + "</span>");
 
     return (
@@ -753,6 +763,59 @@
   }
 
   /* =====================================================================
+     PARCELAMENTO (compartilhado: lançamentos e gastos de terceiros)
+     ===================================================================== */
+  /* campos usados ao CRIAR: parcelas, seletor total/parcela, prévia e
+     "já paguei" — aparecem só quando o destino é cartão */
+  function parcNovoHTML(dica) {
+    return (
+      '<div class="field" id="parcField" hidden><label>Parcelas</label>' +
+      '<select name="installments">' +
+      Array.from({ length: 24 }, (_, i) => i + 1)
+        .map((n) => '<option value="' + n + '"' + (n === 1 ? " selected" : "") + ">" + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>")
+        .join("") +
+      "</select>" +
+      '<div class="seg seg-vmode" id="vmodeField" hidden>' +
+      '<label class="s-tot"><input type="radio" name="vmode" value="total" checked><span>Valor total</span></label>' +
+      '<label class="s-pc"><input type="radio" name="vmode" value="parc"><span>Valor da parcela</span></label>' +
+      "</div>" +
+      '<div class="hint strong" id="parcPreview"></div>' +
+      '<div class="hint">' + dica + "</div></div>" +
+      '<div class="field" id="paidField" hidden><label>Já paguei</label>' +
+      '<input name="paid" type="number" min="0" max="23" inputmode="numeric" value="0">' +
+      '<div class="hint">Compra antiga? As parcelas quitadas não geram registro ' +
+      "— ex.: 12x com 3 pagas cria só da <b>4/12</b> até a <b>12/12</b>.</div></div>"
+    );
+  }
+
+  /* forma de exibir ao EDITAR uma parcela já existente */
+  function parcEditHTML(item) {
+    const g = item.group;
+    return (
+      '<div class="field"><label>Parcela</label><div class="field" style="margin:0"><input value="' +
+      (g ? g.n + " de " + g.total : "à vista") + '" disabled></div>' +
+      '<div class="hint">' +
+      (g
+        ? "Valor da parcela " + fmt(item.amount) + " · total da compra " + fmt(Store.groupTotal(item))
+        : "Ao editar, altera apenas este registro.") +
+      "</div></div>"
+    );
+  }
+
+  /* divide o total pelas parcelas (com ajuste de centavos nas primeiras).
+     Devolve o vetor da 1ª à última, null quando o valor digitado é o de cada
+     parcela, ou "curto" quando o total não dá nem um centavo por parcela. */
+  function parcelaValores(bruto, total, modo) {
+    if (modo === "parc") return null;
+    const unit = Math.floor(bruto / total);
+    if (unit <= 0) return "curto";
+    const resto = bruto - unit * total;
+    const v = [];
+    for (let i = 0; i < total; i++) v.push(unit + (i < resto ? 1 : 0));
+    return v;
+  }
+
+  /* =====================================================================
      MODAIS: LANÇAMENTO
      ===================================================================== */
   function txSheet(id) {
@@ -778,29 +841,12 @@
         : "");
 
     const parcelasRow = t
-      ? '<div class="field"><label>Parcela</label><div class="field" style="margin:0"><input value="' +
-        (t.group ? t.group.n + " de " + t.group.total : "à vista") + '" disabled></div>' +
-        '<div class="hint">Ao editar, altera apenas esta parcela.</div></div>'
-      : '<div class="field" id="parcField" hidden><label>Parcelas</label>' +
-        '<select name="installments">' +
-        Array.from({ length: 24 }, (_, i) => i + 1)
-          .map((n) => '<option value="' + n + '"' + (n === 1 ? " selected" : "") + ">" + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>")
-          .join("") +
-        "</select>" +
-        '<div class="seg seg-vmode" id="vmodeField" hidden>' +
-        '<label class="s-tot"><input type="radio" name="vmode" value="total" checked><span>Valor total</span></label>' +
-        '<label class="s-pc"><input type="radio" name="vmode" value="parc"><span>Valor da parcela</span></label>' +
-        "</div>" +
-        '<div class="hint strong" id="parcPreview"></div>' +
-        '<div class="hint">Cada parcela vira um lançamento no mês correspondente.</div></div>' +
-        '<div class="field" id="paidField" hidden><label>Já paguei</label>' +
-        '<input name="paid" type="number" min="0" max="23" inputmode="numeric" value="0">' +
-        '<div class="hint">Compra antiga? As parcelas quitadas não geram lançamento ' +
-        "— ex.: 12x com 3 pagas cria só da <b>4/12</b> até a <b>12/12</b>.</div></div>";
+      ? parcEditHTML(t)
+      : parcNovoHTML("Cada parcela vira um lançamento no mês correspondente.");
 
     openSheet(
       '<h2>' + (t ? "Editar lançamento" : "Novo lançamento") + "</h2>" +
-      '<form data-form="tx" data-id="' + (t ? t.id : "") + '">' +
+      '<form data-form="tx" data-id="' + (t ? t.id : "") + '"' + (t && t.group ? ' data-grupo="1"' : "") + ">" +
       '<div class="seg">' +
       '<label class="s-in"><input type="radio" name="type" value="in" ' + (type === "in" ? "checked" : "") + "><span>↑ Entrada</span></label>" +
       '<label class="s-out"><input type="radio" name="type" value="out" ' + (type === "out" ? "checked" : "") + "><span>↓ Saída</span></label>" +
@@ -838,43 +884,40 @@
 
   /* mostra/esconde parcelas e "já paguei" conforme destino/tipo */
   function syncDest() {
-    const form = $("#modal-root form");
-    if (!form) return;
-    const dest = form.dest;
-    const tipo = form.querySelector('[name="type"]:checked');
-    const saida = !tipo || tipo.value === "out";
-    const noCartao = !!dest && (dest.value || "").startsWith("card:");
-    const parc = $("#parcField", form);
-    const verParc = noCartao && saida;
-    if (parc) parc.hidden = !verParc;
-    const pago = $("#paidField", form);
-    if (pago) {
-      const n = Number(form.installments ? form.installments.value : 1) || 1;
-      pago.hidden = !(verParc && n > 1);
-    }
-    syncParcelas(form);
+    syncParcelas($("#modal-root form"));
   }
 
-  /* seletor "valor total / valor da parcela" + prévia do cálculo.
-     Só aparece em compra de cartão parcelada (n > 1). */
+  /* esconde/mostra o parcelamento e calcula a prévia do valor.
+     Vale para lançamentos (dest = "card:...") e para gastos de terceiros
+     (select "Cartão usado") — mesma regra nos dois formulários. */
   function syncParcelas(form) {
     if (!form) return;
     const tipo = form.querySelector('[name="type"]:checked');
     const saida = !tipo || tipo.value === "out";
-    const destino = form.dest ? String(form.dest.value || "") : "";
+    let noCartao = false;
+    if (form.dest) noCartao = String(form.dest.value || "").indexOf("card:") === 0;
+    else if (form.cardId) noCartao = !!form.cardId.value;
     const n = Number(form.installments ? form.installments.value : 1) || 1;
-    const ativo = destino.indexOf("card:") === 0 && saida && n > 1;
+    const verParc = noCartao && saida;
+    const parc = $("#parcField", form);
+    if (parc) parc.hidden = !verParc;
+    const pago = $("#paidField", form);
+    if (pago) pago.hidden = !(verParc && n > 1);
+    const ativo = verParc && n > 1;
     const vm = $("#vmodeField", form);
     if (vm) vm.hidden = !ativo;
+    const editando = form.dataset.grupo === "1";
     const marcas = form.querySelector('[name="vmode"]:checked');
     const modo = ativo && marcas && marcas.value === "parc" ? "parc" : "total";
     const lbl = $("#amtLabel", form);
     if (lbl) {
-      lbl.textContent = !ativo
-        ? "Valor"
-        : modo === "total"
-          ? "Valor total da compra"
-          : "Valor da parcela";
+      lbl.textContent = editando
+        ? "Valor da parcela"
+        : !ativo
+          ? "Valor"
+          : modo === "total"
+            ? "Valor total da compra"
+            : "Valor da parcela";
     }
     const prev = $("#parcPreview", form);
     if (!prev) return;
@@ -966,12 +1009,16 @@
         )
         .join("");
 
+    const parcelas = t
+      ? parcEditHTML(t)
+      : parcNovoHTML("Cada parcela vira um registro no mês correspondente.");
+
     openSheet(
       "<h2>" + (t ? "Editar gasto de terceiro" : "Gasto de terceiro") + "</h2>" +
-      '<form data-form="third" data-id="' + (t ? t.id : "") + '">' +
+      '<form data-form="third" data-id="' + (t ? t.id : "") + '"' + (t && t.group ? ' data-grupo="1"' : "") + ">" +
       '<div class="field"><label>Quem comprou</label><input name="person" placeholder="Nome da pessoa" value="' +
       esc(t ? t.person : "") + '" required></div>' +
-      '<div class="field"><label>Valor</label><div class="amount-wrap"><span class="cur">R$</span>' +
+      '<div class="field"><label id="amtLabel">Valor</label><div class="amount-wrap"><span class="cur">R$</span>' +
       '<input name="amount" inputmode="decimal" placeholder="0,00" value="' +
       (t ? (t.amount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
       '" required></div></div>' +
@@ -979,6 +1026,7 @@
       '<div class="field"><label>Data da compra</label><input type="date" name="date" value="' + (t ? t.date : today()) + '"></div>' +
       '<div class="field"><label>Cartão usado</label><select name="cardId">' + cardOpts + "</select></div>" +
       "</div>" +
+      parcelas +
       '<div class="field"><label>Obs.</label><input name="note" placeholder="Ex.: comprou meu sapato" value="' + esc(t ? t.note : "") + '"></div>' +
       (t
         ? '<div class="field"><label>Situação</label><select name="status">' +
@@ -1629,7 +1677,13 @@
     "del-third"(el) {
       const t = Store.thirdItem(el.dataset.id);
       if (!t) return;
-      askConfirm("Excluir registro?", t.person + " · " + fmt(t.amount),
+      askConfirm(
+        "Excluir registro?",
+        t.group
+          ? "Esta parcela (" + t.group.n + " de " + t.group.total + ") de " +
+            t.person + " · " + fmt(t.amount) +
+            " será removida. As demais continuam."
+          : t.person + " · " + fmt(t.amount),
         () => { Store.removeThird(t.id); closeSheet(); render(); toast("Registro excluído"); });
     },
 
@@ -1768,9 +1822,13 @@
         sel.innerHTML = catOptions(e.target.value, keep && keep.kind === e.target.value ? keep.id : null);
       }
     }
-    if (e.target.name === "dest") syncDest();
-    if (e.target.name === "installments" || e.target.name === "type") syncDest();
-    if (e.target.name === "vmode")
+    if (
+      e.target.name === "dest" ||
+      e.target.name === "type" ||
+      e.target.name === "installments" ||
+      e.target.name === "cardId" ||
+      e.target.name === "vmode"
+    )
       syncParcelas(e.target.closest("form"));
     if (e.target.name === "modo") syncMove(e.target.closest("form"));
   });
@@ -1956,20 +2014,13 @@
       if (total > 1) {
         if (restam <= 0)
           return toast("Todas as " + total + " parcelas já foram pagas — nada a lançar");
-        /* modo "Valor total": o que foi digitado é o preço da compra inteira;
-           cada parcela recebe total ÷ n (com o ajuste de centavos nas primeiras) */
-        let valores = null;
-        if (fd.get("vmode") !== "parc") {
-          const unit = Math.floor(base.amount / total);
-          if (unit <= 0)
-            return toast(
-              "Valor total baixo demais para " + total + " parcelas"
-            );
-          const resto = base.amount - unit * total;
-          valores = [];
-          for (let i = 0; i < total; i++)
-            valores.push(unit + (i < resto ? 1 : 0));
-        }
+        /* modo "Valor total": o preço digitado é o da compra inteira e é
+           dividido entre as parcelas (com ajuste de centavos) */
+        const valores = parcelaValores(base.amount, total, fd.get("vmode"));
+        if (valores === "curto")
+          return toast(
+            "Valor total baixo demais para " + total + " parcelas"
+          );
         Store.addInstallments(base, restam, pagas + 1, total, valores);
         toast(
           restam + "x parcela criada" +
@@ -2029,7 +2080,7 @@
     const person = String(fd.get("person") || "").trim();
     if (!person) return toast("Informe quem comprou");
     if (amount <= 0) return toast("Informe o valor");
-    const patch = {
+    const base = {
       person,
       amount,
       date: fd.get("date") || today(),
@@ -2037,15 +2088,40 @@
       note: String(fd.get("note") || "").trim()
     };
     if (fd.has("status")) {
-      patch.status = fd.get("status");
-      patch.paidAt = patch.status === "paid" ? today() : null;
+      base.status = fd.get("status");
+      base.paidAt = base.status === "paid" ? today() : null;
     }
     if (form.dataset.id) {
-      Store.updateThird(form.dataset.id, patch);
+      Store.updateThird(form.dataset.id, base);
       toast("Registro atualizado");
     } else {
-      Store.addThird(patch);
-      toast("Gasto de terceiro registrado");
+      /* mesma regra dos lançamentos: no cartão dá para parcelar,
+         dizendo quantas parcelas já foram pagas */
+      const total = base.cardId
+        ? Math.max(1, Number(fd.get("installments")) || 1)
+        : 1;
+      const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
+      const restam = total - pagas;
+      if (total > 1) {
+        if (restam <= 0)
+          return toast(
+            "Todas as " + total + " parcelas já foram pagas — nada a lançar"
+          );
+        const valores = parcelaValores(base.amount, total, fd.get("vmode"));
+        if (valores === "curto")
+          return toast(
+            "Valor total baixo demais para " + total + " parcelas"
+          );
+        Store.addThirdInstallments(base, restam, pagas + 1, total, valores);
+        toast(
+          restam + "x parcela criada" +
+            (valores ? " de " + fmt(valores[pagas]) : "") +
+            (pagas ? " · da " + (pagas + 1) + "/" + total : "")
+        );
+      } else {
+        Store.addThird(base);
+        toast("Gasto de terceiro registrado");
+      }
     }
     closeSheet();
     render();

@@ -534,6 +534,11 @@
       const ini = Math.max(1, Number(start) || 1);
       const fim = ini + Math.max(1, n) - 1;
       const tot = Number(total) >= fim ? Number(total) : fim;
+      /* valor total do contrato (todas as parcelas) — serve para mostrar
+         "total da compra" ao lado do valor da parcela */
+      const valTotal = valores
+        ? valores.reduce((s, v) => s + v, 0)
+        : base.amount * tot;
       const [y, m] = base.date.slice(0, 7).split("-").map(Number);
       const created = [];
       for (let i = 0; i < n; i++) {
@@ -549,12 +554,52 @@
             Object.assign({}, base, {
               amount: valor,
               date: iso,
-              group: { gid, n: num, total: tot }
+              group: { gid, n: num, total: tot, val: valTotal }
             })
           )
         );
       }
       return created;
+    },
+    /* mesma regra dos lançamentos, para gasto de terceiro no cartão:
+       cria uma registro por mês, vinculados pelo mesmo grupo */
+    addThirdInstallments(base, n, start, total, valores) {
+      const gid = "g_" + Store.uid();
+      const ini = Math.max(1, Number(start) || 1);
+      const fim = ini + Math.max(1, n) - 1;
+      const tot = Number(total) >= fim ? Number(total) : fim;
+      const valTotal = valores
+        ? valores.reduce((s, v) => s + v, 0)
+        : base.amount * tot;
+      const [y, m] = base.date.slice(0, 7).split("-").map(Number);
+      const created = [];
+      for (let i = 0; i < n; i++) {
+        const dt = new Date(y, m - 1 + i, Number(base.date.slice(8, 10)) || 1);
+        const iso = dt.toISOString().slice(0, 10);
+        const num = ini + i;
+        const valor =
+          valores && typeof valores[num - 1] === "number"
+            ? valores[num - 1]
+            : base.amount;
+        created.push(
+          Store.addThird(
+            Object.assign({}, base, {
+              amount: valor,
+              date: iso,
+              group: { gid, n: num, total: tot, val: valTotal }
+            })
+          )
+        );
+      }
+      return created;
+    },
+    /* valor total do contrato: soma de todas as parcelas (não só as criadas).
+       Grupos antigos, sem "val", usam parcela × número de parcelas. */
+    groupTotal(t) {
+      if (!t) return 0;
+      if (!t.group) return t.amount || 0;
+      if (typeof t.group.val === "number") return t.group.val;
+      return (t.group.total || 1) * (t.amount || 0);
     },
     updateTx(id, patch) {
       const t = Store.tx(id);
@@ -640,9 +685,10 @@
         .reduce((s, t) => s + t.amount, 0);
       return { total: mine + others, mine, others };
     },
-    /* parcelas que ainda vão cair (a partir do mês atual) */
+    /* parcelas que ainda vão cair (a partir do mês atual) — minhas e as de
+       terceiros, porque o banco cobra tudo */
     cardFuture(cardId, fromMk) {
-      return Store.data.transactions
+      const mine = Store.data.transactions
         .filter(
           (t) =>
             t.cardId === cardId &&
@@ -650,6 +696,10 @@
             t.date.slice(0, 7) >= fromMk
         )
         .reduce((s, t) => s + t.amount, 0);
+      const others = Store.data.third
+        .filter((t) => t.cardId === cardId && t.date.slice(0, 7) >= fromMk)
+        .reduce((s, t) => s + t.amount, 0);
+      return mine + others;
     },
     cardUsed(cardId) {
       const mine = Store.data.transactions

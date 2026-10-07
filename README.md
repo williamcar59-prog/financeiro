@@ -118,7 +118,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
-| 👥 Terceiros | Quem comprou **com o seu cartão**, quanto, e se já devolveu |
+| 👥 Terceiros | Quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
@@ -133,6 +133,11 @@ Quando alguém compra **usando o seu cartão**, registre em **Terceiros**:
 - o valor **entra na fatura** do cartão (o banco cobra de qualquer forma);
 - o valor **não conta no seu gasto pessoal** (seu saldo fica limpo);
 - fica registrado **quanto falta receber** e de quem.
+
+**Parcelado (v1.6.4)**: em Terceiros dá para escolher **Cartão usado**,
+**Parcelas** e **Já paguei** — a mesma regra dos lançamentos. Cada parcela vira
+um registro no mês dela, e a lista mostra **n/total** e o **total da compra**
+ao lado do valor da parcela.
 
 ### Onde ficam os dados
 
@@ -270,6 +275,22 @@ parcelas, com dois modos:
 
 O rótulo do campo muda junto (**"Valor total da compra"** / **"Valor da
 parcela"**), então dá para conferir antes de tocar em Adicionar.
+
+### 👥 Terceiros parcelado e total + parcela nas duas listas (v1.6.4)
+
+- **Terceiros** ganhou o mesmo bloco dos lançamentos: **Parcelas** (só aparece
+  ao escolher o cartão), seletor **Valor total / Valor da parcela** com prévia e
+  **Já paguei**. O registro avulso continua sendo o jeito de comprar à vista.
+- Quem comprou em 10x com 5 pagas gera **5 registros** (6/10 até 10/10) — e o
+  campo **TOTAL A RECEBER DE TERCEIROS** soma o que ainda está em aberto.
+- **Nas duas listas** (Lançamentos e Terceiros) a linha agora traz os dois
+  valores: o **valor da parcela** em destaque + a pílula **n/total** + a pílula
+  **total R$ …** com o preço da compra inteira (ex.: `183,33 · 6/12 ·
+  total R$ 2.200,00`).
+- Ao **editar** uma parcela aparece `Valor da parcela R$ 80,00 · total da
+  compra R$ 800,00` — dá para conferir os dois valores sem voltar à lista.
+- **Próximas faturas** do cartão agora incluem as parcelas de terceiros também
+  (o banco cobra tudo, independentemente de quem gastou).
 
 **Como ficar com o caixa certo** — regra única do app:
 
