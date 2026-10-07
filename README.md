@@ -361,7 +361,7 @@ Também nessa versão: **migração dos registros antigos de terceiros**
   Limite honesto: sem servidor de push, o aviso depende do app estar aberto
   ou instalado — não é igual a notificação de banco.
 
-### ⚡ Comparativos, agrupamento e QR Code (v1.8.0)
+### ⚡ Comparativos, agrupamento e QR Code (v1.8.0 · v1.8.1)
 
 - **Comparativo no Painel** — o cartão do Caixa agora mostra a linha
   **"👇 Gastos 12% a menos que em setembro · R$ 304,25 vs R$ 346,00"**
@@ -384,6 +384,10 @@ Também nessa versão: **migração dos registros antigos de terceiros**
   aplicativo + o link, com botões **📤 Compartilhar** (abre o WhatsApp etc.
   no celular) e **📋 Copiar link**. É o jeito mais rápido de instalar em
   outro aparelho: aponta a câmera e pronto.
+- **Correções (v1.8.1)** — categoria com **R$ 0,00** no período agora aceita
+  ser escolhida no filtro dos Relatórios (antes voltava para "Todas"), e a
+  cópia do link tem um método de reserva quando a área de transferência
+  moderna é bloqueada pelo navegador.
 
 **Como ficar com o caixa certo** — regra única do app:
 

@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.8.0";
+  const APP_VERSION = "1.8.1";
   const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -1120,9 +1120,11 @@
         .filter((t) => t.type === "out")
         .forEach((t) => (porCat6[t.catId] = (porCat6[t.catId] || 0) + t.amount))
     );
-    /* categoria escolhida — se sumiu dos dados, volta para "Todas" */
+    /* categoria escolhida — se sumiu dos dados, volta para "Todas".
+       (atenção: o teste é por "existe", não por valor — categoria com
+       R$ 0,00 no período continua válida e entra no filtro) */
     let catSel = state.repCat || "";
-    if (catSel && !porCat6[catSel]) catSel = "";
+    if (catSel && porCat6[catSel] === undefined) catSel = "";
     const filtroCat =
       Object.keys(porCat6).length > 1
         ? '<div class="field td-menu"><label for="repcat">Categoria</label>' +
