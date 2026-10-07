@@ -11,11 +11,12 @@ entradas, saídas, **cartões de crédito** e **gastos de terceiros no seu cart�
 PLANILHA_DE_GASTOS/
 ├── index.html            # estrutura das telas
 ├── styles.css            # visual (mobile-first)
-├── store.js              # camada de DADOS (local hoje, nuvem amanhã)
+├── store.js              # camada de DADOS + login/sincronização (nuvem)
 ├── app.js                # telas, formulários e cálculos
 ├── manifest.webmanifest  # torna instalável (PWA)
 ├── sw.js                 # cache offline
 ├── icon.svg              # ícone do app
+├── privacidade.html      # política de privacidade (link na tela de login)
 └── README.md             # este arquivo
 ```
 
@@ -135,8 +136,13 @@ Quando alguém compra **usando o seu cartão**, registre em **Terceiros**:
 
 ### Onde ficam os dados
 
-Neste aparelho, no `localStorage` do navegador — ninguém mais acessa.
-Por isso: **⚙️ Ajustes → Exportar backup** de vez em quando.
+Em **dois lugares ao mesmo tempo**: uma cópia no `localStorage` do aparelho
+(para funcionar sem internet) e a mesma cópia na **nuvem**, ligada ao seu login.
+Cada conta vê **apenas os próprios dados** — quem entra com outra conta não vê
+nada seu.
+
+O backup por arquivo continua valendo (⚙️ Ajustes → Exportar backup): é a sua
+cópia independente, para guardar onde quiser.
 
 ### 💾 Backup: exportar e importar
 
@@ -159,6 +165,51 @@ Como o app se protege:
   antes, e o conselho é exportar primeiro (assim nada se perde);
 - arquivos que não sejam backup deste app são **recusados** — não dá para
   importar um arquivo errado sem querer.
+
+---
+
+## ☁️ Novidades da v1.6.0 — conta na nuvem
+
+### Login obrigatório
+
+Ao abrir o app pela primeira vez aparece a **tela de entrada**:
+
+- **Entrar com Google** (o caminho mais rápido);
+- ou **e-mail + senha** (dá para criar a conta na hora, com 6+ caracteres).
+
+Sem entrar não abre — é isso que garante que **cada pessoa enxerga apenas os
+próprios dados**. O e-mail fica guardado no aparelho; a senha nunca é guardada.
+
+### 🔄 Sincronização automática
+
+Tudo o que você lança é salvo **no aparelho e na nuvem** ao mesmo tempo:
+
+- **sem internet** o app continua normalmente e avisa *"Sem internet — salvo
+  neste aparelho"*;
+- quando a conexão volta, ele sincroniza sozinho;
+- em **⚙️ Ajustes → 👤 Conta na nuvem** ficam o seu e-mail, o status
+  (*Sincronizado ✓*), o botão **🔄 Sincronizar** e o **Sair da conta**.
+
+### Primeira entrada com dados antigos
+
+Se o aparelho já tinha dados (versões anteriores), na primeira abertura da sua
+conta aparece:
+
+> **Importar o que já estava aqui?**
+> Encontramos neste aparelho X lançamento(s), Y cartão(ões) e Z registro(s) de
+> terceiros. Quer começar a usar com eles?
+
+**Importar** traz tudo e já sincroniza; **Cancelar** começa do zero.
+
+### Perguntas frequentes
+
+- **Esqueci a senha / perdi o celular?** Entre com o Google ou crie um novo
+  acesso com o mesmo e-mail — os dados estão na nuvem e voltam sozinhos.
+- **Dá para usar no celular e no PC?** Sim: entre com a mesma conta nos dois.
+- **Quer apagar tudo?** ⚙️ Ajustes → Apagar todos os dados (some do aparelho e
+  da nuvem na próxima sincronização).
+- **Privacidade:** o texto que aparece na tela de consentimento do Google está
+  em `privacidade.html`.
 
 ---
 
@@ -282,9 +333,9 @@ a pedir esse PIN toda vez que abrir.
 - ~~**Fase 3 — Ajustes finos:** metas por categoria, lembrete de vencimento,
   recorrências fixas (aluguel/assinaturas).~~ ✅ **Feito na v1.3.0**
   (orçamento por categoria, contas fixas, lembrete de fatura e bloqueio por PIN).
-- **Fase 2 — Nuvem com login:** Supabase (autenticação + banco) para sincronizar
+- ~~**Fase 2 — Nuvem com login:** Supabase (autenticação + banco) para sincronizar
   entre dispositivos. A camada `store.js` já está isolada: só `persist()` e
-  `Store.init()` mudam — o resto do app não mexe.
+  `Store.init()` mudam — o resto do app não mexe.~~ ✅ **Feito na v1.6.0**
 - ~~**Fase 4 (início):** saldo por conta (Pix/poupança/cofrinho).~~ ✅ **Feito na
   v1.5.0** (contas com saldo próprio, transferência e rendimento).
 - **Fase 4 — Polimento:** ícone PNG 512×512,

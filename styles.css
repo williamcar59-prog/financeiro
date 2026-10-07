@@ -658,3 +658,53 @@ button {
 .acc-linha .rec-del { margin-right: -10px; }
 .seg .s-mv input:checked + span { background: var(--brand); }
 .seg .s-rd input:checked + span { background: var(--in); }
+
+/* v1.6.0 — login obrigatório + conta na nuvem */
+body.nao-logado #app { display: none; }
+#login-root { position: fixed; inset: 0; z-index: 90; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#login-root:empty { display: none; background: none; }
+.login-box {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 30px 22px calc(26px + env(safe-area-inset-bottom));
+  max-width: 440px;
+  margin: 0 auto;
+}
+.login-logo { width: 62px; height: 62px; display: block; margin: 0 auto 14px; }
+.login-box h1 { font-size: 21px; text-align: center; margin: 0 0 8px; letter-spacing: -0.2px; }
+.login-sub { text-align: center; color: var(--ink-2); font-size: 14.5px; line-height: 1.5; margin: 0 0 22px; }
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+  font-weight: 600;
+}
+.btn-google .g-ico { color: #4285f4; font-weight: 800; font-size: 18px; }
+.login-div { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--ink-3); font-size: 13px; }
+.login-div::before, .login-div::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.login-box input[type="email"], .login-box input[type="password"] {
+  width: 100%;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  background: var(--card);
+  font-size: 16px; /* >=16px: o Chrome não dá zoom automático no campo */
+  outline: none;
+}
+.login-box input:focus { border-color: var(--brand); }
+.login-btns { display: flex; gap: 10px; }
+.login-btns .btn { flex: 1; }
+.login-err { color: var(--out); font-size: 13.5px; min-height: 17px; margin: 2px 0 6px; text-align: center; line-height: 1.35; }
+.login-link { display: block; text-align: center; margin-top: 18px; font-size: 13px; color: var(--ink-3); text-decoration: none; }
+.conta-email { font-weight: 600; font-size: 15px; word-break: break-all; }
+.conta-sync { font-size: 13px; color: var(--brand-d); margin-top: 2px; }
+.conta-acoes { display: flex; gap: 10px; }
+.conta-acoes .btn { flex: 1; }

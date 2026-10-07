@@ -1,14 +1,214 @@
 /* =====================================================================
-   store.js — camada de dados (local-first)
-   Hoje: localStorage. Futuro (Fase 2): trocar "persist()" por chamadas
-   ao Supabase mantendo a MESMA API pública. Nada mais no app acessa
-   o localStorage diretamente.
+   store.js — camada de dados (local-first + nuvem)
+   - No aparelho: localStorage, uma CHAVE por usuário (KEY + "::" + uid);
+   - Na nuvem: Supabase, UM registro JSON por usuário (tabela user_data)
+     com RLS — cada conta lê e grava apenas os próprios dados.
+   Nada mais no app acessa o localStorage diretamente.
    Valores monetários são SEMPRE inteiros em centavos.
    ===================================================================== */
 (function () {
   "use strict";
 
   const KEY = "planilha_gastos_v1";
+
+  /* =====================================================================
+     NUVEM (Supabase) — login por usuário + sincronização
+     ===================================================================== */
+  const SESSION_KEY = "fin_session_v1";
+  const CLOUD_URL = "https://cfftreeptmhenbfylafo.supabase.co";
+  const CLOUD_KEY = "sb_publishable_8VkpuzRmYk4Z2ifHJN1vvA_xv8VHk3-";
+  const PKCE_KEY = "fin_pkce_v1";
+
+  let dataKey = KEY;          /* chave do aparelho de quem está usando */
+  let pushTimer = null;
+  let syncState = "idle";     /* idle | saving | ok | offline | error */
+  let syncAt = null;
+  let expiredHook = null;
+
+  function readSession() {
+    try {
+      return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    } catch (e) {
+      return null;
+    }
+  }
+  function saveSession(s) {
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    } catch (e) {}
+    dataKey = s && s.user_id ? KEY + "::" + s.user_id : KEY;
+  }
+  function dropSession() {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch (e) {}
+    dataKey = KEY;
+  }
+  function b64u(str) {
+    return str.replace(/-/g, "+").replace(/_/g, "/");
+  }
+  function decodeJwt(tok) {
+    try {
+      const p = tok.split(".")[1];
+      const bin = atob(b64u(p));
+      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch (e) {
+      return {};
+    }
+  }
+  function normSession(novo, antigo) {
+    const s = Object.assign({}, antigo || {}, novo || {});
+    if (novo && novo.user) {
+      s.user_id = novo.user.id || s.user_id;
+      s.email = novo.user.email || s.email;
+    }
+    if (!s.expires_at && s.expires_in)
+      s.expires_at = Math.floor(Date.now() / 1000) + Number(s.expires_in);
+    if (!s.user_id && s.access_token) {
+      const j = decodeJwt(s.access_token);
+      s.user_id = j.sub || s.user_id;
+      s.email = j.email || s.email;
+    }
+    return s;
+  }
+  /* sessão inválida (refresh recusado): derruba o login e avisa o app */
+  function sessaoInvalida() {
+    dropSession();
+    if (expiredHook) {
+      try {
+        expiredHook();
+      } catch (e) {}
+    }
+  }
+  async function supa(path, opts) {
+    opts = opts || {};
+    const headers = Object.assign(
+      { apikey: CLOUD_KEY, "Content-Type": "application/json" },
+      opts.headers || {}
+    );
+    const s = readSession();
+    if (s && s.access_token && opts.auth !== false)
+      headers.Authorization = "Bearer " + s.access_token;
+    const res = await fetch(CLOUD_URL + path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body
+    });
+    const txt = await res.text();
+    let json = null;
+    try {
+      json = txt ? JSON.parse(txt) : null;
+    } catch (e) {}
+    if (!res.ok) {
+      const erro = new Error(
+        (json &&
+          (json.msg || json.message || json.error_description || json.error)) ||
+          "Erro " + res.status
+      );
+      erro.status = res.status;
+      throw erro;
+    }
+    return json;
+  }
+  /* renova o access_token quando está perto de expirar */
+  async function sessaoViva() {
+    const s = readSession();
+    if (!s) throw new Error("Não conectado");
+    if (s.expires_at && Date.now() / 1000 > s.expires_at - 60) {
+      if (!s.refresh_token) {
+        sessaoInvalida();
+        throw new Error("Sessão expirada");
+      }
+      try {
+        const novo = await supa("/auth/v1/token?grant_type=refresh_token", {
+          method: "POST",
+          auth: false,
+          body: JSON.stringify({ refresh_token: s.refresh_token })
+        });
+        const n = normSession(novo, s);
+        saveSession(n);
+        return n;
+      } catch (e) {
+        if (e.status === 400 || e.status === 401) sessaoInvalida();
+        throw e;
+      }
+    }
+    return s;
+  }
+  function rotuloSync() {
+    if (syncState === "saving") return "Sincronizando…";
+    if (syncState === "offline") return "Sem internet — salvo neste aparelho";
+    if (syncState === "error") return "Falha ao sincronizar — tente de novo";
+    if (syncState === "ok" && syncAt)
+      return (
+        "Sincronizado ✓ " +
+        new Date(syncAt).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit"
+        })
+      );
+    return "Pronto para sincronizar";
+  }
+  function avisarSync() {
+    try {
+      const el = document.getElementById("syncTxt");
+      if (el) el.textContent = rotuloSync();
+    } catch (e) {}
+  }
+  function guardarLocal() {
+    try {
+      localStorage.setItem(dataKey, JSON.stringify(db));
+    } catch (e) {
+      console.error("Falha ao salvar dados", e);
+    }
+  }
+  function agendarPush() {
+    if (!readSession()) return;
+    syncState = "saving";
+    avisarSync();
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      pushTimer = null;
+      Store.auth.push().catch(() => {});
+    }, 1200);
+  }
+  async function puxar() {
+    const s = readSession();
+    if (!s) return "no-session";
+    const vivo = await sessaoViva();
+    const linhas = await supa(
+      "/rest/v1/user_data?user_id=eq." +
+        encodeURIComponent(vivo.user_id) +
+        "&select=data,updated_at"
+    );
+    if (!linhas || !linhas.length) return "empty";
+    const remoto = linhas[0];
+    Store.init();
+    const localAt = db && db.updatedAt ? String(db.updatedAt) : "";
+    /* guarda o que é mais novo: quem salvou por último vence */
+    if (
+      remoto.updated_at &&
+      localAt &&
+      String(remoto.updated_at) <= localAt
+    ) {
+      syncState = "ok";
+      syncAt = Date.now();
+      avisarSync();
+      return "local-newer";
+    }
+    if (!remoto.data || !Array.isArray(remoto.data.transactions))
+      return "empty";
+    db = remoto.data;
+    if (!db.categories) db.categories = DEFAULT_CATS.slice();
+    migrate();
+    db.updatedAt = remoto.updated_at;
+    guardarLocal();
+    syncState = "ok";
+    syncAt = Date.now();
+    avisarSync();
+    return "applied";
+  }
 
   const DEFAULT_CATS = [
     { id: "out_moradia", kind: "out", name: "Moradia", icon: "🏠" },
@@ -75,12 +275,11 @@
     }
   }
 
+  /* grava localmente (sempre) e agenda o envio para a nuvem */
   function persist() {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(db));
-    } catch (e) {
-      console.error("Falha ao salvar dados", e);
-    }
+    if (db && typeof db === "object") db.updatedAt = new Date().toISOString();
+    guardarLocal();
+    agendarPush();
   }
 
   const Store = {
@@ -88,8 +287,14 @@
 
     init() {
       if (db) return db;
+      /* quem está usando? (chave própria por usuário) */
+      const sessaoAtual = readSession();
+      dataKey =
+        sessaoAtual && sessaoAtual.user_id
+          ? KEY + "::" + sessaoAtual.user_id
+          : KEY;
       try {
-        const raw = localStorage.getItem(KEY);
+        const raw = localStorage.getItem(dataKey);
         db = raw ? JSON.parse(raw) : seed();
       } catch (e) {
         db = seed();
@@ -685,6 +890,234 @@
     reset() {
       db = seed();
       persist();
+    }
+  };
+
+  /* =====================================================================
+     LOGIN + SINCRONIZAÇÃO (o app só conversa por aqui)
+     ===================================================================== */
+  Store.auth = {
+    /* sessão guardada no aparelho (síncrona, usada na abertura do app) */
+    session() {
+      return readSession();
+    },
+    onExpired(fn) {
+      expiredHook = fn;
+    },
+
+    async signIn(email, pass) {
+      const j = await supa("/auth/v1/token?grant_type=password", {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({ email: email, password: pass })
+      });
+      saveSession(normSession(j));
+      db = null;
+      Store.init();
+      return true;
+    },
+
+    async signUp(email, pass) {
+      const j = await supa("/auth/v1/signup", {
+        method: "POST",
+        auth: false,
+        body: JSON.stringify({ email: email, password: pass })
+      });
+      if (!j || !j.access_token)
+        throw new Error("Confirme o link enviado ao seu e-mail");
+      saveSession(normSession(j));
+      db = null;
+      Store.init();
+      return true;
+    },
+
+    /* entra pelo Google (redireciona e volta para cá com os tokens) */
+    async signInGoogle() {
+      let challenge = "";
+      try {
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        const verifier = btoa(String.fromCharCode.apply(null, Array.from(bytes)))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+        const dig = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(verifier)
+        );
+        challenge = btoa(
+          String.fromCharCode.apply(null, Array.from(new Uint8Array(dig)))
+        )
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+        try {
+          localStorage.setItem(PKCE_KEY, verifier);
+        } catch (e) {}
+      } catch (e) {
+        challenge = "";
+      }
+      const volta = location.origin + location.pathname + location.search;
+      let url =
+        CLOUD_URL +
+        "/auth/v1/authorize?provider=google&redirect_to=" +
+        encodeURIComponent(volta);
+      if (challenge)
+        url +=
+          "&code_challenge=" +
+          encodeURIComponent(challenge) +
+          "&code_challenge_method=s256";
+      location.href = url;
+    },
+
+    /* a página voltou do Google com os tokens na URL? */
+    async consumeRedirect() {
+      const hash = location.hash ? location.hash.slice(1) : "";
+      const busca = location.search ? location.search.slice(1) : "";
+      const hp = new URLSearchParams(hash);
+      const qp = new URLSearchParams(busca);
+      const code = qp.get("code");
+      let sessao = null;
+      if (hp.get("access_token")) {
+        sessao = normSession({
+          access_token: hp.get("access_token"),
+          refresh_token: hp.get("refresh_token"),
+          expires_in: hp.get("expires_in"),
+          token_type: hp.get("token_type")
+        });
+      } else if (code) {
+        let verifier = null;
+        try {
+          verifier = localStorage.getItem(PKCE_KEY);
+        } catch (e) {}
+        if (!verifier) return false;
+        const j = await supa("/auth/v1/token?grant_type=pkce", {
+          method: "POST",
+          auth: false,
+          body: JSON.stringify({ auth_code: code, code_verifier: verifier })
+        });
+        sessao = normSession(j);
+      } else {
+        return false;
+      }
+      try {
+        localStorage.removeItem(PKCE_KEY);
+      } catch (e) {}
+      if (!sessao || !sessao.user_id) throw new Error("Falha ao entrar");
+      saveSession(sessao);
+      db = null;
+      Store.init();
+      history.replaceState(null, "", location.pathname + "#home");
+      return true;
+    },
+
+    async signOut() {
+      if (pushTimer) {
+        clearTimeout(pushTimer);
+        pushTimer = null;
+      }
+      try {
+        if (readSession()) await supa("/auth/v1/logout", { method: "POST" });
+      } catch (e) {}
+      dropSession();
+      db = null;
+      syncState = "idle";
+      syncAt = null;
+    },
+
+    /* puxa o que está na nuvem; devolve o que aconteceu */
+    pull() {
+      return puxar();
+    },
+
+    /* envia o que está neste aparelho */
+    async push() {
+      const s = readSession();
+      if (!s) return "no-session";
+      Store.init();
+      try {
+        const vivo = await sessaoViva();
+        syncState = "saving";
+        avisarSync();
+        const quando = new Date().toISOString();
+        await supa("/rest/v1/user_data", {
+          method: "POST",
+          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({
+            user_id: vivo.user_id,
+            data: db,
+            updated_at: quando
+          })
+        });
+        db.updatedAt = quando;
+        guardarLocal();
+        syncState = "ok";
+        syncAt = Date.now();
+        avisarSync();
+        return "ok";
+      } catch (e) {
+        syncState =
+          typeof navigator !== "undefined" && navigator.onLine === false
+            ? "offline"
+            : "error";
+        if (e.status === 401) sessaoInvalida();
+        avisarSync();
+        throw e;
+      }
+    },
+
+    /* botão "Sincronizar agora": puxa e, se precisar, envia */
+    async syncNow() {
+      const r = await puxar();
+      if (r === "local-newer" || r === "empty") await Store.auth.push();
+      return r;
+    },
+
+    /* dados que já existiam neste aparelho antes do login */
+    legacyInfo() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return null;
+        const d = JSON.parse(raw);
+        if (!d || !Array.isArray(d.transactions)) return null;
+        return {
+          tx: d.transactions.length,
+          cards: (d.cards || []).length,
+          third: (d.third || []).length
+        };
+      } catch (e) {
+        return null;
+      }
+    },
+    useLegacy() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return false;
+        const d = JSON.parse(raw);
+        if (!d || !Array.isArray(d.transactions)) return false;
+        db = d;
+        if (!db.categories) db.categories = DEFAULT_CATS.slice();
+        migrate();
+        Store.save();
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+    startFresh() {
+      db = seed();
+      Store.save();
+      return true;
+    },
+
+    status() {
+      const s = readSession();
+      return {
+        logged: !!s,
+        email: (s && s.email) || "",
+        sync: syncState,
+        label: rotuloSync()
+      };
     }
   };
 

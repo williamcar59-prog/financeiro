@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.5.1";
+  const APP_VERSION = "1.6.0";
   const BUILD_DATE = "06/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -99,6 +99,7 @@
     thirdFilter: "open"
   };
   let pendingConfirm = null;
+  let pendingCancel = null;
 
   /* ---------------- toast ---------------- */
   let toastTimer = null;
@@ -125,11 +126,15 @@
     if (f) setTimeout(() => f.focus(), 60);
   }
   function closeSheet() {
+    const cancelou = pendingCancel;
     $("#modal-root").innerHTML = "";
     pendingConfirm = null;
+    pendingCancel = null;
+    if (cancelou) cancelou();
   }
-  function askConfirm(title, text, fn, okLabel) {
+  function askConfirm(title, text, fn, okLabel, onCancel) {
     pendingConfirm = fn;
+    pendingCancel = typeof onCancel === "function" ? onCancel : null;
     openSheet(
       '<h2>' + esc(title) + "</h2>" +
       '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' + esc(text) + "</p>" +
@@ -1135,6 +1140,24 @@
       .catch(() => {});
   }
 
+  /* conta conectada + sincronização (seção dos Ajustes) */
+  function contaSection() {
+    const st = Store.auth.status();
+    return (
+      '<div class="sec-title">👤 Conta na nuvem</div>' +
+      '<div class="card" style="margin:0">' +
+      '<div class="conta-email">' + esc(st.email) + "</div>" +
+      '<div class="conta-sync" id="syncTxt">' + esc(st.label) + "</div>" +
+      '<p style="margin:8px 0 12px;font-size:13px;color:var(--ink-2);line-height:1.5">' +
+      "Seus dados ficam salvos na nuvem e aparecem em qualquer aparelho onde você entrar com esta conta. " +
+      "Sem internet, o app continua funcionando e sincroniza sozinho depois.</p>" +
+      '<div class="conta-acoes">' +
+      '<button class="btn ghost" data-act="sync-now">🔄 Sincronizar</button>' +
+      '<button class="btn ghost" data-act="logout">Sair da conta</button>' +
+      "</div></div>"
+    );
+  }
+
   function settingsSheet() {
     const cats = Store.categories();
     const accs = Store.accounts();
@@ -1201,10 +1224,7 @@
       "</div>" +
       '<div class="hint" style="font-size:12px;color:var(--ink-3);margin-top:10px">' +
       "Categorias padrão não podem ser removidas.</div>" +
-      '<div class="sec-title">Conta na nuvem</div>' +
-      '<div class="card" style="margin:0"><p style="margin:0 0 12px;font-size:14px;color:var(--ink-2);line-height:1.5">' +
-      "A Fase 2 adiciona login e sincronização entre dispositivos (Supabase). Nesta versão os dados ficam somente neste aparelho — faça backup regularmente.</p>" +
-      '<button class="btn ghost" data-act="close-modal">Entendi</button></div>' +
+      contaSection() +
       '<div class="settings-list danger">' +
       '<button data-act="reset">🗑️ Apagar todos os dados deste aparelho<span class="arrow">›</span></button>' +
       "</div>" +
@@ -1212,6 +1232,77 @@
       BUILD_DATE + "</div>" +
       '<input type="file" id="importFile" accept="application/json,.json" hidden>'
     );
+  }
+
+  /* =====================================================================
+     TELA: LOGIN (obrigatório — cada pessoa vê só os próprios dados)
+     ===================================================================== */
+  function loginHTML() {
+    return (
+      '<div class="login-box">' +
+      '<img class="login-logo" src="icon.svg" alt="">' +
+      "<h1>Minha Vida Financeira</h1>" +
+      '<p class="login-sub">Entre para guardar seus dados na nuvem e usar o app em qualquer aparelho.</p>' +
+      '<button type="button" class="btn btn-google" data-act="login-google">' +
+      '<span class="g-ico">G</span> Entrar com Google</button>' +
+      '<div class="login-div"><span>ou com e-mail</span></div>' +
+      '<form data-form="login">' +
+      '<input type="email" name="email" placeholder="Seu e-mail" autocomplete="email" inputmode="email" required>' +
+      '<input type="password" name="pass" placeholder="Senha (mín. 6 caracteres)" autocomplete="current-password" minlength="6" required>' +
+      '<div class="login-err" id="loginErr" role="alert"></div>' +
+      '<div class="login-btns">' +
+      '<button class="btn" type="submit" name="op" value="in">Entrar</button>' +
+      '<button class="btn ghost" type="submit" name="op" value="up">Criar conta</button>' +
+      "</div></form>" +
+      '<a class="login-link" href="privacidade.html" target="_blank" rel="noopener">Política de privacidade</a>' +
+      "</div>"
+    );
+  }
+
+  function mostrarLogin(msg) {
+    const root = document.getElementById("login-root");
+    if (!root) return;
+    root.innerHTML = loginHTML();
+    document.body.classList.add("nao-logado");
+    const err = document.getElementById("loginErr");
+    if (msg && err) err.textContent = msg;
+  }
+
+  /* traduz os erros do serviço em português */
+  function erroLogin(e) {
+    const m = String((e && e.message) || e || "");
+    if (/Failed to fetch|NetworkError|Network request failed/i.test(m))
+      return "Sem conexão — verifique a internet";
+    if (/Invalid login credentials/i.test(m))
+      return "E-mail ou senha incorretos";
+    if (/already registered|already been registered/i.test(m))
+      return "Este e-mail já tem conta — toque em Entrar";
+    if (/password/i.test(m) && /characters/i.test(m))
+      return "A senha precisa de pelo menos 6 caracteres";
+    if (/Email not confirmed/i.test(m))
+      return "Confirme o link enviado ao seu e-mail";
+    if (e && e.status === 429)
+      return "Muitas tentativas — aguarde alguns minutos";
+    if (e && e.status >= 500) return "Serviço fora do ar — tente em instantes";
+    return m || "Não foi possível entrar";
+  }
+
+  function entrarComForm(form, fd, ev) {
+    const email = String(fd.get("email") || "").trim();
+    const pass = String(fd.get("pass") || "");
+    const criar = ev && ev.submitter && ev.submitter.value === "up";
+    const err = document.getElementById("loginErr");
+    if (err) err.textContent = "";
+    const btn = (ev && ev.submitter) || form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    const fn = criar ? Store.auth.signUp : Store.auth.signIn;
+    fn(email, pass)
+      .then(() => location.reload())
+      .catch((e) => {
+        if (btn) btn.disabled = false;
+        const el = document.getElementById("loginErr");
+        if (el) el.textContent = erroLogin(e);
+      });
   }
 
   /* =====================================================================
@@ -1226,6 +1317,7 @@
   };
 
   function render() {
+    if (!Store.auth || !Store.auth.session()) return; /* sem login não há app */
     $("#view").innerHTML = (VIEWS[state.route] || viewHome)();
     $$("#tabbar button").forEach((b) =>
       b.classList.toggle("active", b.dataset.route === state.route)
@@ -1273,6 +1365,38 @@
   }
 
   const actions = {
+    /* ---------------- conta / nuvem ---------------- */
+    "login-google"() {
+      const el = document.getElementById("loginErr");
+      if (el) el.textContent = "Abrindo o Google…";
+      Store.auth.signInGoogle().catch((e) => {
+        if (el) el.textContent = erroLogin(e);
+      });
+    },
+    "sync-now"() {
+      const el = document.getElementById("syncTxt");
+      if (el) el.textContent = "Sincronizando…";
+      Store.auth.syncNow()
+        .then(() => {
+          if (el) el.textContent = Store.auth.status().label;
+          toast("Sincronizado ✓");
+        })
+        .catch((e) => {
+          if (el) el.textContent = Store.auth.status().label;
+          toast(erroLogin(e));
+        });
+    },
+    logout() {
+      askConfirm(
+        "Sair da conta?",
+        "Seus dados continuam guardados na nuvem. Para usar de novo, é só entrar.",
+        () => {
+          Store.auth.signOut().then(() => location.reload());
+        },
+        "Sair"
+      );
+    },
+
     goto(el) { go(el.dataset.route); },
     month(el) { state.month = addMonths(state.month, Number(el.dataset.d)); render(); },
     filter(el) {
@@ -1405,6 +1529,7 @@
     },
     "confirm-yes"() {
       const fn = pendingConfirm;
+      pendingCancel = null; /* confirmou: o "cancelar" não vale mais */
       closeSheet();
       if (fn) fn();
     },
@@ -1611,6 +1736,7 @@
     const kind = form.dataset.form;
     const fd = new FormData(form);
 
+    if (kind === "login") return entrarComForm(form, fd, e);
     if (kind === "tx") return saveTx(form, fd);
     if (kind === "card") return saveCard(form, fd);
     if (kind === "third") return saveThird(form, fd);
@@ -1906,6 +2032,7 @@
   }
 
   function mostrarLock() {
+    if (!Store.auth.session()) return; /* sem login não mostra o PIN */
     if (!Store.pinAtivo()) return;
     if (document.getElementById("lock")) return;
     pinBuf = "";
@@ -1975,10 +2102,82 @@
   });
 
   window.addEventListener("hashchange", () => go(location.hash.slice(1)));
-  go(location.hash.slice(1) || "home");
 
-  /* contas fixas: cria sozinho o que já venceu neste mês */
-  try {
+  /* primeira sincronização ao abrir: puxa o que está na nuvem e, no
+     primeiro acesso desta conta neste aparelho, pergunta se quer começar
+     com os dados que já estavam guardados aqui (versão antiga/local). */
+  async function primeiraVez() {
+    const sessao = Store.auth.session();
+    if (!sessao) return;
+    const marca = "fin_login_v1_" + sessao.user_id;
+    let primeira = false;
+    try {
+      primeira = !localStorage.getItem(marca);
+    } catch (e) {}
+    try {
+      const r = await Store.auth.pull();
+      if (primeira) {
+        try {
+          localStorage.setItem(marca, "1");
+        } catch (e) {}
+        const st = Store.stats();
+        const semDadosAqui =
+          !st.tx && !st.cards && !st.third && !st.recs && !st.trf;
+        if (semDadosAqui) {
+          const legado = Store.auth.legacyInfo();
+          if (legado && (legado.tx || legado.cards || legado.third)) {
+            /* nem a nuvem nem esta conta têm nada aqui: oferece os dados
+               que já estavam guardados neste aparelho (versão anterior) */
+            askConfirm(
+              "Importar o que já estava aqui?",
+              "Encontramos neste aparelho " +
+                legado.tx +
+                " lançamento(s), " +
+                legado.cards +
+                " cartão(ões) e " +
+                legado.third +
+                " registro(s) de terceiros. Quer começar a usar com eles?",
+              () => {
+                if (Store.auth.useLegacy()) {
+                  render();
+                  toast("Dados importados ✓ Sincronizando…");
+                }
+              },
+              "Importar",
+              () => Store.auth.startFresh() /* recusou: começa do zero */
+            );
+          } else {
+            Store.auth.startFresh();
+          }
+        } else if (r === "empty") {
+          /* dados só neste aparelho: sobe sem perguntar */
+          Store.auth.push().catch(() => {});
+        } else if (r === "applied") {
+          render();
+          toast("Dados sincronizados da nuvem ✓");
+        } else {
+          /* nuvem mais antiga: o que está aqui manda */
+          Store.auth.push().catch(() => {});
+        }
+      } else if (r === "applied") {
+        render();
+      }
+    } catch (e) {
+      /* sem internet: segue com o que está no aparelho; tenta de novo na próxima */
+      syncFallback();
+    }
+  }
+
+  function syncFallback() {
+    const el = document.getElementById("syncTxt");
+    if (el) el.textContent = Store.auth.status().label;
+  }
+
+  function iniciarApp() {
+    go(location.hash.slice(1) || "home");
+
+    /* contas fixas: cria sozinho o que já venceu neste mês */
+    try {
     const gerados = Store.syncRecs(today());
     if (gerados.length)
       setTimeout(
@@ -2037,8 +2236,35 @@
     } catch (e) {}
   })();
 
-  /* ---------------- bloqueio: inicia travado + trava ao voltar pro app ---------------- */
-  if (Store.pinAtivo()) mostrarLock();
+    /* ---------------- bloqueio: inicia travado + trava ao voltar pro app ---------------- */
+    if (Store.pinAtivo()) mostrarLock();
+
+    /* nuvem: puxa o que está salvo na conta (e oferece o import no 1º acesso) */
+    primeiraVez();
+  } /* fim iniciarApp() */
+
+  /* sessão caiu no meio do uso → volta para a tela de login */
+  Store.auth.onExpired(() => {
+    try {
+      closeSheet();
+    } catch (e) {}
+    mostrarLogin("Sua sessão expirou — entre de novo");
+  });
+
+  /* veio do Google com os tokens? limpa a URL. Sem conta: tela de login. */
+  Store.auth.consumeRedirect()
+    .then(() => {
+      if (Store.auth.session()) iniciarApp();
+      else mostrarLogin();
+    })
+    .catch((e) => {
+      console.error("Login Google:", e);
+      if (Store.auth.session()) iniciarApp();
+      else
+        mostrarLogin(
+          "Não foi possível entrar com o Google — tente de novo"
+        );
+    });
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {

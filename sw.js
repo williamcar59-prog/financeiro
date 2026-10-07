@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",
@@ -36,6 +36,12 @@ self.addEventListener("activate", (e) => {
 /* cache primeiro, atualiza em segundo plano */
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  /* nuvem (Supabase): nunca entra no cache do app */
+  try {
+    if (new URL(e.request.url).origin !== self.location.origin) return;
+  } catch (err) {
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const network = fetch(e.request)
