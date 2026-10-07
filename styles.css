@@ -708,3 +708,10 @@ body.nao-logado #app { display: none; }
 .conta-sync { font-size: 13px; color: var(--brand-d); margin-top: 2px; }
 .conta-acoes { display: flex; gap: 10px; }
 .conta-acoes .btn { flex: 1; }
+
+/* ============ v1.6.1: seletor "valor total / valor da parcela" ============ */
+.seg-vmode { margin-top: 8px; }
+.seg-vmode .s-tot input:checked + span { background: var(--brand); }
+.seg-vmode .s-pc input:checked + span { background: var(--ink-2); }
+#parcPreview { min-height: 17px; }
+.hint.strong { font-weight: 600; color: var(--ink); }

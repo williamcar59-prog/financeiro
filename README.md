@@ -116,7 +116,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 💰 Contas | **Saldo separado por conta** (Conta, Cofrinho, Dinheiro...) + 💸 transferência e 📈 rendimento — a soma das contas é o Caixa do Painel |
 | 🧾 Lançamentos | Entrada/saída, categorias, contas, filtro por mês e por tipo |
 | 💳 Cartões | Fatura do mês, limite usado/disponível, fechamento, vencimento, próximas faturas |
-| 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
+| 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
 | 👥 Terceiros | Quem comprou **com o seu cartão**, quanto, e se já devolveu |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias |
@@ -255,6 +255,21 @@ Quando o destino é **cartão** e você escolhe mais de 1 parcela, aparece o cam
 **Já paguei**. Ele serve para compra antiga: 12x com 3 pagas → o app **cria só
 da 4/12 até a 12/12** (os meses quitados não viram lançamento e nada fica
 vermelho no histórico).
+
+### 💲 Valor total ou valor da parcela (v1.6.1)
+
+Escolhendo **mais de 1x** no cartão aparece um seletor logo abaixo do campo de
+parcelas, com dois modos:
+
+- **Valor total** *(padrão)*: digite o preço da compra inteira. A prévia mostra
+  **12x de R$ 100,00 = R$ 1.200,00** enquanto você digita, e o app divide sozinho
+  — até quando não divide certo: R$ 350,00 em 12x vira **8x de R$ 29,17 e 4x de
+  R$ 29,16** (o total bate certinho);
+- **Valor da parcela**: digite o valor de cada mês, como antes — a prévia mostra
+  **Total da compra: R$ 600,00** para 6x de R$ 100.
+
+O rótulo do campo muda junto (**"Valor total da compra"** / **"Valor da
+parcela"**), então dá para conferir antes de tocar em Adicionar.
 
 **Como ficar com o caixa certo** — regra única do app:
 

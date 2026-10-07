@@ -515,8 +515,10 @@
     /* cria N parcelas vinculadas (mês a mês).
        start = número da primeira parcela a criar; total = total do contrato.
        Ex.: 12x com 3 já pagas → addInstallments(base, 9, 4, 12)
-       cria da 4/12 até a 12/12, sem tocar nos meses já quitados. */
-    addInstallments(base, n, start, total) {
+       cria da 4/12 até a 12/12, sem tocar nos meses já quitados.
+       `valores` (opcional) = valor de cada parcela do contrato, da 1ª à
+       última — usado quando o usuário digitou o VALOR TOTAL da compra. */
+    addInstallments(base, n, start, total, valores) {
       const gid = "g_" + Store.uid();
       const ini = Math.max(1, Number(start) || 1);
       const fim = ini + Math.max(1, n) - 1;
@@ -526,11 +528,17 @@
       for (let i = 0; i < n; i++) {
         const dt = new Date(y, m - 1 + i, Number(base.date.slice(8, 10)) || 1);
         const iso = dt.toISOString().slice(0, 10);
+        const num = ini + i;
+        const valor =
+          valores && typeof valores[num - 1] === "number"
+            ? valores[num - 1]
+            : base.amount;
         created.push(
           Store.addTx(
             Object.assign({}, base, {
+              amount: valor,
               date: iso,
-              group: { gid, n: ini + i, total: tot }
+              group: { gid, n: num, total: tot }
             })
           )
         );
