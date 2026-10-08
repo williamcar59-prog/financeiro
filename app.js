@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.8.1";
+  const APP_VERSION = "1.9.0";
   const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -107,7 +107,11 @@
     txAgrup: "dia",
     /* relatórios: categoria em destaque ("" = todas) e mês de comparação */
     repCat: "",
-    repCmp: ""
+    repCmp: "",
+    /* gasto de terceiro recebido por QR/link (v1.9.0): dados validados e a
+       consulta original, para o hash da barra de endereço não se perder */
+    qr: null,
+    qrRaw: ""
   };
 
   /* =====================================================================
@@ -219,6 +223,7 @@
   }
   function closeSheet() {
     const cancelou = pendingCancel;
+    qrPararCam(); /* leitor de QR aberto: desliga a câmera ao fechar */
     $("#modal-root").innerHTML = "";
     pendingConfirm = null;
     pendingConfirm2 = null;
@@ -822,7 +827,10 @@
             .join("") +
           "</optgroup>"
         : "") +
-      "</select></div>"
+      "</select></div>" +
+      /* receber gasto por QR/link (v1.9.0) — aparece em todas as visões */
+      '<div class="td-receber"><button class="btn ghost small" data-act="qr-receber">' +
+      "📥 Receber gasto por QR Code ou link</button></div>"
     );
   }
 
@@ -849,6 +857,224 @@
       );
     }
     return terceirosAbertosFiltrados();
+  }
+
+  /* =====================================================================
+     RECEBER GASTO DE TERCEIRO POR QR CODE / LINK (v1.9.0)
+     O terceiro preenche a página pública "terceiro.html" e devolve o QR.
+     Aqui os dados são conferidos e SÓ ENTRAM depois da confirmação.
+     ===================================================================== */
+  function viewReceber() {
+    const voltar =
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="qr-descartar">Voltar</button></div>';
+
+    /* link veio sem dados (ou inválido) — explica e oferece as opções */
+    if (!state.qr) {
+      return (
+        '<div class="top"><div><h1>📥 Receber gasto</h1><div class="sub">QR Code · link de terceiro</div></div></div>' +
+        '<div class="empty"><div class="big">🔲</div><h3>Nenhum dado recebido</h3>' +
+        "<p>O link abriu <b>sem os dados da compra</b> (valor ausente ou inválido). " +
+        "Peça para a pessoa gerar o QR de novo na página <b>terceiro.html</b>.</p>" +
+        '<button class="btn" data-act="qr-receber">Opções de recebimento</button>' +
+        '<div style="height:9px"></div>' + voltar + "</div>"
+      );
+    }
+
+    const qr = state.qr;
+    const cards = Store.cards();
+    const precisaCartao = qr.p > 1 && cards.length > 0;
+    const cardOpts =
+      '<option value="">— sem cartão —</option>' +
+      cards
+        .map(
+          (c) =>
+            '<option value="' + c.id + '">' + esc(c.name) +
+            (c.final ? " •" + esc(c.final) : "") + "</option>"
+        )
+        .join("");
+
+    const resumo =
+      '<div class="card hero">' +
+      '<div class="label">📥 Gasto recebido por QR Code</div>' +
+      '<div class="value">' + fmt(qr.v) + "</div>" +
+      '<div class="row">' +
+      '<div><div class="k"><i class="dot y"></i>Data</div><div class="v">' + esc(fullDate(qr.dt)) + "</div></div>" +
+      '<div><div class="k"><i class="dot g"></i>Parcelas</div><div class="v">' +
+      (qr.p > 1 ? qr.p + "x" : "à vista") + "</div></div>" +
+      "</div>" +
+      (qr.d ? '<div class="hero-geral">' + esc(qr.d) + "</div>" : "") +
+      (precisaCartao
+        ? '<div class="hero-geral">⚠️ As parcelas só valem para cartão de crédito — escolha o cartão usado abaixo.</div>'
+        : "") +
+      "</div>";
+
+    const form =
+      '<form data-form="third" data-qr="1" data-total="1" class="card" style="padding:16px">' +
+      '<div class="sec-title" style="margin-bottom:10px">Confira e confirme</div>' +
+      '<div class="field"><label for="qrpessoa">Quem comprou</label>' +
+      '<input id="qrpessoa" name="person" placeholder="Nome da pessoa" autocomplete="off" required></div>' +
+      '<div class="field"><label id="amtLabel">Valor total da compra</label>' +
+      '<div class="amount-wrap"><span class="cur">R$</span>' +
+      '<input name="amount" inputmode="decimal" placeholder="0,00" value="' +
+      (qr.v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) +
+      '" required></div></div>' +
+      '<div class="row2">' +
+      '<div class="field"><label>Data da compra</label>' +
+      '<input type="date" name="date" value="' + esc(qr.dt) + '"></div>' +
+      '<div class="field"><label>Cartão usado</label>' +
+      '<select name="cardId"' + (precisaCartao ? " required" : "") + ">" + cardOpts + "</select></div>" +
+      "</div>" +
+      parcNovoHTML("Cada parcela vira um registro no mês correspondente.", qr.p) +
+      '<div class="field"><label>Obs.</label>' +
+      '<input name="note" maxlength="80" placeholder="Ex.: comprou meu sapato" value="' + esc(qr.d) + '"></div>' +
+      '<div class="hint strong" style="margin-bottom:12px">Nada foi gravado ainda — confira antes de adicionar.</div>' +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="qr-descartar">Descartar</button>' +
+      '<button class="btn" type="submit">✅ Adicionar em Terceiros</button>' +
+      "</div></form>";
+
+    return (
+      '<div class="top"><div><h1>📥 Receber gasto</h1>' +
+      '<div class="sub">Veio por QR Code · confira antes de confirmar</div></div></div>' +
+      resumo + form
+    );
+  }
+
+  /* ---------------- apoio ao recebimento por QR (v1.9.0) ---------------- */
+  /* página que o terceiro preenche (pública, sem login) */
+  function urlTerceiro() {
+    return location.origin + location.pathname.replace(/index\.html$/, "") + "terceiro.html";
+  }
+
+  function copiarTexto(txt, okMsg) {
+    const ok = function () { toast(okMsg || "Copiado ✓"); };
+    /* cópia antiga, usada quando a área de transferência nova é bloqueada */
+    const legado = function () {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = txt;
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const deu = document.execCommand("copy");
+        document.body.removeChild(ta);
+        deu ? ok() : toast("Não deu para copiar — selecione o texto manualmente");
+      } catch (e) {
+        toast("Não deu para copiar — selecione o texto manualmente");
+      }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(ok, legado);
+    else legado();
+  }
+
+  /* aceita a URL inteira ou só o trecho "#/receber?..." */
+  function qrHash(txt) {
+    const t = String(txt == null ? "" : txt).trim();
+    if (!t) return null;
+    let frag = t;
+    const i = t.indexOf("#");
+    if (i >= 0) frag = t.slice(i + 1);
+    if (frag.charAt(0) === "/") frag = frag.slice(1);
+    const j = frag.indexOf("?");
+    if (j < 0 || !/^receber$/i.test(frag.slice(0, j))) return null;
+    return "receber" + frag.slice(j);
+  }
+
+  /* folha com as formas de receber: câmera, link da página e colar link */
+  function qrSheet() {
+    const temCam =
+      typeof BarcodeDetector !== "undefined" &&
+      navigator.mediaDevices &&
+      navigator.mediaDevices.getUserMedia;
+    openSheet(
+      "<h2>📥 Receber gasto de terceiro</h2>" +
+      '<div class="hint" style="margin-top:0">Mande para a pessoa o link abaixo: ela preenche a compra ' +
+      "e te devolve o <b>QR Code</b> (ou o próprio link).</div>" +
+      '<div class="field"><label>Link para quem vai comprar</label>' +
+      '<input id="qrPageUrl" readonly value="' + esc(urlTerceiro()) + '"></div>' +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="qr-copiar-pag">📋 Copiar link</button>' +
+      (temCam ? '<button class="btn" type="button" data-act="qr-scan">📷 Ler QR com a câmera</button>' : "") +
+      "</div>" +
+      '<div class="field" style="margin-top:14px"><label>Ou cole aqui o link que você recebeu</label>' +
+      '<input id="qrLink" placeholder="https://…#/receber?v=24000&amp;dt=2026-10-07&amp;p=3" autocomplete="off"></div>' +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="close-modal">Cancelar</button>' +
+      '<button class="btn" type="button" data-act="qr-abrir">Abrir gasto</button></div>'
+    );
+  }
+
+  /* câmera embutida (Chrome/Android) — leitor de QR sem biblioteca extra */
+  let camStream = null;
+  function qrPararCam() {
+    if (!camStream) return;
+    try {
+      camStream.getTracks().forEach(function (t) { t.stop(); });
+    } catch (e) {}
+    camStream = null;
+  }
+  function qrScan() {
+    if (
+      typeof BarcodeDetector === "undefined" ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      return toast("Este navegador não tem leitor de QR embutido — use a câmera do celular ou cole o link");
+    }
+    openSheet(
+      "<h2>📷 Ler QR Code</h2>" +
+      '<div class="hint" style="margin-top:0">Aponte para o QR Code enviado pela pessoa.</div>' +
+      '<video id="qrVideo" playsinline muted autoplay style="width:100%;min-height:190px;' +
+      'border-radius:14px;background:#000;object-fit:cover"></video>' +
+      '<div class="hint" id="qrScanMsg">Procurando o QR…</div>' +
+      '<div class="form-actions"><button class="btn ghost" type="button" data-act="close-modal">Cancelar</button></div>'
+    );
+    const video = document.getElementById("qrVideo");
+    const msg = document.getElementById("qrScanMsg");
+    let analisando = false;
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (stream) {
+        camStream = stream;
+        video.srcObject = stream;
+        return video.play();
+      })
+      .then(function () {
+        const det = new BarcodeDetector({ formats: ["qr_code"] });
+        const tick = function () {
+          if (!document.body.contains(video)) return qrPararCam(); /* sheet fechou */
+          if (video.readyState < 2) return requestAnimationFrame(tick);
+          if (analisando) return requestAnimationFrame(tick);
+          analisando = true;
+          det
+            .detect(video)
+            .then(function (codes) {
+              analisando = false;
+              if (!codes || !codes.length) return requestAnimationFrame(tick);
+              const h = qrHash(codes[0].rawValue);
+              qrPararCam();
+              if (!h) {
+                closeSheet();
+                return toast("Esse QR não é de gasto deste app");
+              }
+              closeSheet();
+              go(h);
+            })
+            .catch(function () {
+              analisando = false;
+              requestAnimationFrame(tick);
+            });
+        };
+        tick();
+      })
+      .catch(function () {
+        qrPararCam();
+        if (msg) msg.textContent = "Sem acesso à câmera — cole o link abaixo.";
+        toast("Não consegui abrir a câmera");
+      });
   }
 
   function viewThird() {
@@ -1325,12 +1551,14 @@
      ===================================================================== */
   /* campos usados ao CRIAR: parcelas, seletor total/parcela, prévia e
      "já paguei" — aparecem só quando o destino é cartão */
-  function parcNovoHTML(dica) {
+  function parcNovoHTML(dica, sel) {
+    /* sel = parcela pré-escolhida (usada pelo QR recebido, v1.9.0) */
+    const escolhida = Math.min(24, Math.max(1, Number(sel) || 1));
     return (
       '<div class="field" id="parcField" hidden><label>Parcelas</label>' +
       '<select name="installments">' +
       Array.from({ length: 24 }, (_, i) => i + 1)
-        .map((n) => '<option value="' + n + '"' + (n === 1 ? " selected" : "") + ">" + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>")
+        .map((n) => '<option value="' + n + '"' + (n === escolhida ? " selected" : "") + ">" + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>")
         .join("") +
       "</select>" +
       '<div class="seg seg-vmode" id="vmodeField" hidden>' +
@@ -1463,10 +1691,12 @@
     if (pago) pago.hidden = !(verParc && n > 1);
     const ativo = verParc && n > 1;
     const vm = $("#vmodeField", form);
-    if (vm) vm.hidden = !ativo;
+    if (vm) vm.hidden = !ativo || form.dataset.total === "1";
     const editando = form.dataset.grupo === "1";
+    /* QR recebido (v1.9.0): o valor é SEMPRE o total da compra */
+    const soTotal = form.dataset.total === "1";
     const marcas = form.querySelector('[name="vmode"]:checked');
-    const modo = ativo && marcas && marcas.value === "parc" ? "parc" : "total";
+    const modo = ativo && !soTotal && marcas && marcas.value === "parc" ? "parc" : "total";
     const lbl = $("#amtLabel", form);
     if (lbl) {
       lbl.textContent = editando
@@ -2035,12 +2265,23 @@
     tx: viewTx,
     cards: viewCards,
     third: viewThird,
-    report: viewReport
+    report: viewReport,
+    /* gasto recebido por QR/link (v1.9.0) */
+    receber: viewReceber
   };
+
+  /* hash mostrado na barra de endereço (mantém os dados do QR em #/receber) */
+  function hashAtual() {
+    return "#" + state.route +
+      (state.route === "receber" && state.qrRaw ? "?" + state.qrRaw : "");
+  }
 
   function render() {
     if (!Store.auth || !Store.auth.session()) return; /* sem login não há app */
     $("#view").innerHTML = (VIEWS[state.route] || viewHome)();
+    /* a prévia do parcelamento da tela de recebimento acompanha o cartão */
+    if (state.route === "receber")
+      syncParcelas($('#view form[data-form="third"]'));
     $$("#tabbar button").forEach((b) =>
       b.classList.toggle("active", b.dataset.route === state.route)
     );
@@ -2057,13 +2298,42 @@
       "aria-label",
       ehTerceiros ? "Novo gasto de terceiro" : "Novo lançamento"
     );
-    if (location.hash.slice(1) !== state.route)
-      history.replaceState(null, "", "#" + state.route);
+    if (location.hash.slice(1) !== hashAtual().slice(1))
+      history.replaceState(null, "", hashAtual());
   }
 
-  function go(route) {
+  /* lê #/receber?v=..&dt=..&p=..&d=.. e valida — QR/link vindo de fora,
+     então NADA é aceito sem passar por aqui (e nada é gravado sem confirmação) */
+  function lerQR(qs) {
+    const q = {};
+    String(qs || "").split("&").forEach(function (kv) {
+      if (!kv) return;
+      const i = kv.indexOf("=");
+      const k = i < 0 ? kv : kv.slice(0, i);
+      let val = i < 0 ? "" : kv.slice(i + 1);
+      try { val = decodeURIComponent(val.replace(/\+/g, " ")); } catch (e) {}
+      q[k] = val;
+    });
+    const v = Math.round(Number(q.v));
+    if (!(v > 0) || v > 99999999) return null; /* teto: R$ 999.999,99 */
+    const dt = /^\d{4}-\d{2}-\d{2}$/.test(q.dt || "") ? q.dt : today();
+    const p = Math.min(24, Math.max(1, Math.floor(Number(q.p) || 1)));
+    const d = String(q.d || "").replace(/[<>]/g, "").slice(0, 80);
+    return { v: v, dt: dt, p: p, d: d };
+  }
+
+  /* aceita "receber?v=.." (com dados), "/receber?v=.." (como vem no link
+     do QR) ou "third" (rota simples das abas) */
+  function go(hash) {
+    const h = String(hash == null ? "" : hash);
+    const i = h.indexOf("?");
+    const query = i >= 0 ? h.slice(i + 1) : "";
+    let route = i >= 0 ? h.slice(0, i) : h;
+    if (route.charAt(0) === "/") route = route.slice(1);
     if (!VIEWS[route]) route = "home";
     state.route = route;
+    state.qr = route === "receber" ? lerQR(query) : null;
+    state.qrRaw = state.qr ? query : "";
     window.scrollTo(0, 0);
     render();
   }
@@ -2242,6 +2512,26 @@
         legado();
       }
     },
+    /* ---------------- receber gasto por QR/link (v1.9.0) ---------------- */
+    "qr-receber"() { qrSheet(); },
+    "qr-descartar"() {
+      state.qr = null;
+      state.qrRaw = "";
+      go("third");
+      toast("Gasto descartado — nada foi gravado");
+    },
+    "qr-abrir"() {
+      const inp = document.getElementById("qrLink");
+      const h = qrHash(inp && inp.value);
+      if (!h) return toast("Esse link não parece ser um gasto deste app");
+      closeSheet();
+      go(h);
+    },
+    "qr-scan"() { qrScan(); },
+    "qr-copiar-pag"() {
+      copiarTexto(urlTerceiro(), "Link copiado ✓ — mande para quem vai comprar");
+    },
+
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
     move() { moveSheet(); },
@@ -2959,6 +3249,13 @@
         Store.addThird(base);
         toast("Gasto de terceiro registrado");
       }
+    }
+    /* tela de recebimento por QR (v1.9.0): confirma e volta para a aba */
+    if (form.dataset.qr) {
+      state.qr = null;
+      state.qrRaw = "";
+      go("third");
+      return;
     }
     closeSheet();
     render();

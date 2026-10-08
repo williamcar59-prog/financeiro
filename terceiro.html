@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<!-- interactive-widget: teclado não cobre o formulário -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#10b981">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Gere o QR Code de um gasto feito no cartão de outra pessoa para ela lançar no app dela.">
+<title>Novo gasto de terceiro · Minha Vida Financeira</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* página pública (sem login) — coluna única estilo app */
+  #tg { max-width: 520px; margin: 0 auto; padding: 20px 16px calc(env(safe-area-inset-bottom, 0px) + 30px); }
+  #tg .hd { text-align: center; margin-bottom: 16px; }
+  #tg .hd .big { font-size: 40px; line-height: 1; }
+  #tg .hd h1 { font-size: 21px; margin: 8px 0 6px; }
+  #tg .hd p { font-size: 14px; color: var(--ink-2); margin: 0; line-height: 1.45; }
+  #tg .card + .card { margin-top: 14px; }
+  #tg .qr-img { text-align: center; padding: 6px 0 2px; }
+  #tg .qr-img img { width: 100%; max-width: 250px; height: auto; image-rendering: pixelated; border-radius: 12px; }
+  #tg .qr-resumo { text-align: center; font-weight: 700; margin: 6px 0 12px; }
+  #tg .qr-btns { display: grid; gap: 9px; }
+  #tg .qr-btns .btn { width: 100%; text-decoration: none; text-align: center; display: block; }
+  #tg .passos { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+  #tg .passos b { color: var(--ink); }
+  #tg .passos ol { margin: 6px 0 0; padding-left: 20px; }
+  #tg .sec-title { font-size: 13px; font-weight: 800; color: var(--ink-2); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
+  #tg .topo { display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 12.5px; color: var(--ink-3); margin-bottom: 12px; }
+  #tg .topo a { color: var(--brand-d); text-decoration: none; font-weight: 700; }
+  #tg .ok { color: var(--brand-d); font-weight: 700; text-align: center; font-size: 13.5px; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+<main id="tg">
+
+  <div class="topo">💸 <a href="./">Minha Vida Financeira</a></div>
+
+  <div class="hd">
+    <div class="big">🛒</div>
+    <h1>Novo gasto de terceiro</h1>
+    <p>Você comprou usando <b>o cartão de outra pessoa</b>? Preencha aqui e gere o QR Code
+       para ela lançar no aplicativo dela.</p>
+  </div>
+
+  <div class="card" style="padding:16px">
+    <form id="tgForm">
+      <div class="field">
+        <label id="tgAmtLabel" for="v">Valor total da compra</label>
+        <div class="amount-wrap"><span class="cur">R$</span>
+          <input id="v" name="v" inputmode="decimal" placeholder="0,00" autocomplete="off" required>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="p">Parcelas</label>
+        <select id="p" name="p"></select>
+        <div class="seg seg-vmode" id="vmField" hidden>
+          <label class="s-tot"><input type="radio" name="vmode" value="total" checked><span>Valor total</span></label>
+          <label class="s-pc"><input type="radio" name="vmode" value="parc"><span>Valor da parcela</span></label>
+        </div>
+        <div class="hint strong" id="prev"></div>
+        <div class="hint">Cada parcela vira um registro no mês correspondente lá no app.</div>
+      </div>
+
+      <div class="field">
+        <label for="dt">Data da compra</label>
+        <input type="date" id="dt" name="dt">
+      </div>
+
+      <div class="field">
+        <label for="d">Descrição</label>
+        <input id="d" name="d" maxlength="80" placeholder="Ex.: comprou meu sapato" autocomplete="off">
+      </div>
+
+      <button class="btn" type="submit" style="width:100%">🔲 Gerar QR Code</button>
+    </form>
+  </div>
+
+  <div class="card" id="qrBox" hidden style="padding:16px">
+    <div class="sec-title">QR Code gerado</div>
+    <div class="qr-img" id="qrImg"></div>
+    <div class="qr-resumo" id="qrResumo"></div>
+    <div class="field"><label for="qrLinkOut">Link gerado</label>
+      <input id="qrLinkOut" readonly value=""></div>
+    <div class="qr-btns">
+      <button class="btn" id="btShare" type="button">📤 Compartilhar</button>
+      <button class="btn ghost" id="btZap" type="button">🟢 Enviar no WhatsApp</button>
+      <button class="btn ghost" id="btCopy" type="button">📋 Copiar link</button>
+      <a class="btn ghost" id="btSave" download="gasto-terceiro.png" href="#">⬇️ Salvar imagem do QR</a>
+    </div>
+    <div class="ok" id="qrOk"></div>
+    <div class="hint" style="margin-top:10px">A pessoa aponta a câmera (ou abre o link), o aplicativo
+      abre sozinho mostrando os dados e ela só confirma.</div>
+  </div>
+
+  <div class="card passos" style="padding:16px">
+    <b>Como funciona</b>
+    <ol>
+      <li>Preencha a compra e toque em <b>Gerar QR Code</b>.</li>
+      <li>Envie o QR (ou o link) para quem te emprestou o cartão — pelo WhatsApp mesmo.</li>
+      <li>Ele abre no aplicativo dele, confirma e o valor aparece na aba
+          <b>👥 Terceiros</b> já com o nome de quem comprou.</li>
+    </ol>
+    <div style="margin-top:10px">Nada é gravado sem a confirmação dela — e esta página não pede
+      login nem senha.</div>
+  </div>
+
+</main>
+
+<script src="qrcode.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* mesma regra do app: dinheiro é SEMPRE inteiro em centavos */
+  function parseMoney(s) {
+    s = String(s == null ? "" : s).trim().replace(/R\$\s?/g, "");
+    if (!s) return 0;
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    s = s.replace(/[^\d.\-]/g, "");
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : Math.round(n * 100);
+  }
+  function fmt(cents) {
+    return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  function hoje() { return new Date().toISOString().slice(0, 10); }
+  function dataBR(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
+    var p = iso.split("-");
+    return p[2] + "/" + p[1] + "/" + p[0];
+  }
+
+  /* link do app dono dos dados: esta mesma página, sem "terceiro.html" */
+  function baseApp() {
+    return location.href.split("#")[0].split("?")[0].replace(/terceiro\.html$/, "");
+  }
+
+  var $ = function (s) { return document.querySelector(s); };
+  var v = $("#v"), p = $("#p"), dt = $("#dt"), d = $("#d");
+  var vmField = $("#vmField"), prev = $("#prev"), amtLabel = $("#tgAmtLabel");
+
+  /* 1x a 24x — mesmo texto do app */
+  var opts = "";
+  for (var n = 1; n <= 24; n++) {
+    opts += '<option value="' + n + '">' + n + "x " + (n > 1 ? "(mês a mês)" : "à vista") + "</option>";
+  }
+  p.innerHTML = opts;
+  dt.value = hoje();
+
+  function modo() {
+    var r = document.querySelector('input[name="vmode"]:checked');
+    return vmField.hidden ? "total" : (r ? r.value : "total");
+  }
+  function totalCents() {
+    var bruto = parseMoney(v.value);
+    var n = Number(p.value) || 1;
+    if (n > 1 && modo() === "parc") return bruto * n;
+    return bruto;
+  }
+
+  /* prévia idêntica à do aplicativo */
+  function sync() {
+    var n = Number(p.value) || 1;
+    vmField.hidden = !(n > 1);
+    amtLabel.textContent = n > 1 && modo() === "parc" ? "Valor da parcela" : "Valor total da compra";
+    var bruto = parseMoney(v.value);
+    if (!(n > 1)) { prev.textContent = ""; return; }
+    if (modo() === "total") {
+      var unit = Math.floor(bruto / n), resto = bruto - unit * n;
+      prev.textContent = !bruto
+        ? "Informe o total da compra — ele é dividido em " + n + "x"
+        : n + "x de " + fmt(unit) + (resto ? " a " + fmt(unit + 1) : "") + " = " + fmt(bruto);
+    } else {
+      prev.textContent = !bruto ? "Informe o valor de cada parcela"
+        : "Total da compra: " + fmt(bruto * n);
+    }
+  }
+  v.addEventListener("input", sync);
+  p.addEventListener("change", sync);
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.name === "vmode") sync();
+  });
+  sync();
+
+  /* ---------------- QR ---------------- */
+  var linkAtual = "", textoAtual = "", qrObj = null;
+
+  function resumo(total, n, iso, desc) {
+    return (desc ? desc + " · " : "") + fmt(total) + (n > 1 ? " em " + n + "x" : "") +
+           " · " + dataBR(iso);
+  }
+
+  $("#tgForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var total = totalCents();
+    if (!(total > 0)) { v.focus(); return; }
+    var n = Number(p.value) || 1;
+    var iso = dt.value || hoje();
+    var desc = String(d.value || "").trim().slice(0, 80);
+
+    var qs = "?v=" + total + "&dt=" + encodeURIComponent(iso) +
+             "&p=" + n + (desc ? "&d=" + encodeURIComponent(desc) : "");
+    linkAtual = baseApp() + "#/receber" + qs;
+    textoAtual = "Gasto de terceiro: " + resumo(total, n, iso, desc);
+
+    try {
+      qrObj = qrcode(0, "M");
+      qrObj.addData(linkAtual);
+      qrObj.make();
+      $("#qrImg").innerHTML = qrObj.createImgTag(6, 10, "QR Code do gasto");
+      $("#btSave").href = qrObj.createDataURL(10, 12);
+    } catch (err) {
+      $("#qrImg").innerHTML = "";
+      $("#btSave").href = "#";
+    }
+
+    $("#qrResumo").textContent = resumo(total, n, iso, desc);
+    $("#qrLinkOut").value = linkAtual;
+    $("#qrBox").hidden = false;
+    $("#qrOk").textContent = "";
+    $("#qrBox").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  function copiar(txt, ok) {
+    var done = function () { $("#qrOk").textContent = ok; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, function () { reserva(txt, done); });
+    } else reserva(txt, done);
+  }
+  function reserva(txt, done) {
+    var ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.style.cssText = "position:fixed;top:-999px;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { $("#qrOk").textContent = "Copie manualmente: " + txt; }
+    document.body.removeChild(ta);
+  }
+
+  $("#btShare").addEventListener("click", function () {
+    if (navigator.share) {
+      navigator.share({ title: "Gasto de terceiro", text: textoAtual, url: linkAtual })
+        .catch(function () {});
+    } else {
+      copiar(textoAtual + " " + linkAtual, "Link copiado ✓ — mande no WhatsApp");
+    }
+  });
+  $("#btZap").addEventListener("click", function () {
+    location.href = "https://wa.me/?text=" + encodeURIComponent(textoAtual + "\n" + linkAtual);
+  });
+  $("#btCopy").addEventListener("click", function () {
+    copiar(linkAtual, "Link copiado ✓");
+  });
+  /* baixa a imagem do QR — o gerador devolve GIF, então converte em PNG
+     (canvas não é bloqueado por data URL); se falhar, baixa o original */
+  $("#btSave").addEventListener("click", function (e) {
+    var gif = this.getAttribute("href");
+    if (!gif || gif === "#") return e.preventDefault();
+    e.preventDefault();
+    var baixar = function (url, nome) {
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    var im = new Image();
+    im.onload = function () {
+      try {
+        var cv = document.createElement("canvas");
+        cv.width = im.width;
+        cv.height = im.height;
+        cv.getContext("2d").drawImage(im, 0, 0);
+        baixar(cv.toDataURL("image/png"), "gasto-terceiro.png");
+      } catch (err) {
+        baixar(gif, "gasto-terceiro.gif");
+      }
+    };
+    im.onerror = function () { baixar(gif, "gasto-terceiro.gif"); };
+    im.src = gif;
+  });
+})();
+</script>
+</body>
+</html>

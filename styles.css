@@ -25,6 +25,10 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* o atributo hidden precisa vencer o display das classes (ex.: .seg é flex
+   e escondia só quando o elemento era filho de outro já escondido) */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -883,6 +887,10 @@ body.nao-logado #app { display: none; }
 /* terceiros: botão de marcar vários */
 .td-massa { display: flex; justify-content: flex-end; margin: -2px 0 10px; }
 .td-massa .btn { width: auto; }
+
+/* receber gasto por QR Code ou link (v1.9.0) */
+.td-receber { margin: -4px 0 12px; }
+.td-receber .btn { width: 100%; }
 
 /* relatórios: comparação de dois meses lado a lado */
 .cmp-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

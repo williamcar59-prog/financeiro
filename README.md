@@ -13,6 +13,8 @@ PLANILHA_DE_GASTOS/
 ├── styles.css            # visual (mobile-first)
 ├── store.js              # camada de DADOS + login/sincronização (nuvem)
 ├── app.js                # telas, formulários e cálculos
+├── terceiro.html         # página pública: gera o QR do gasto de terceiro
+├── qrcode.js             # biblioteca de QR (MIT) — usada só na página acima
 ├── manifest.webmanifest  # torna instalável (PWA)
 ├── sw.js                 # cache offline
 ├── icon.svg              # ícone do app
@@ -389,6 +391,43 @@ Também nessa versão: **migração dos registros antigos de terceiros**
   cópia do link tem um método de reserva quando a área de transferência
   moderna é bloqueada pelo navegador.
 
+### 📥 Gasto de terceiro por QR Code (v1.9.0)
+
+O terceiro comprou no **seu** cartão e você quer isso na aba **Terceiros**
+sem digitar. Agora ele mesmo lança, e o dado chega pronto:
+
+- **Página pública `terceiro.html`** — ele abre o link que você mandou
+  (**sem instalar nada e sem login**), preenche **Valor · Parcelas · Data ·
+  Descrição** e toca em **🔲 Gerar QR Code**. Sai a prévia
+  *"3x de R$ 80,00 = R$ 240,00"*, a imagem do QR e o link, com botões
+  **📤 Compartilhar**, **🟢 Enviar no WhatsApp**, **📋 Copiar link**,
+  **⬇️ Salvar imagem do QR** e o campo **Link gerado**.
+- **📥 Receber gasto (novo botão no topo de 👥 Terceiros)** — abre as três
+  formas de receber: **📷 Ler QR com a câmera** (quem tem Chrome no
+  celular — some sozinho se o navegador não tiver o leitor),
+  **📋 Colar link recebido** e o link da página para você mandar para
+  quem vai comprar. Também basta **tocar no link/QR que chegou no
+  WhatsApp**: a câmera nativa do Android abre o app direto na tela certa.
+- **Tela de confirmação (`#/receber?...`)** — mostra valor, data, parcelas
+  e descrição e **nada é gravado até você tocar em ✅ Adicionar em
+  Terceiros**. Dá para corrigir o nome (você informa quem comprou), a data,
+  a observação e escolher o cartão. **Descartar** volta sem gravar nada.
+- **Regras de segurança** — os dados viajam **dentro do próprio link**
+  (sem servidor novo, sem mexer no Supabase); todo parâmetro é validado
+  (valor de 0,01 a R$ 999.999,99, data no formato ISO, descrição limpa de
+  `<`/`>`), o QR exige confirmação humana e **sem cartão escolhido não
+  nascem parcelas** (com aviso na tela: *"As parcelas só valem para cartão
+  de crédito"*).
+- **Valor do QR é sempre o total da compra** — o seletor "Valor da
+  parcela" fica escondido nessa tela, então ninguém muda o sentido do
+  número sem querer.
+- **Correção de CSS (v1.9.0)** — `[hidden] { display: none !important }`:
+  o atributo `hidden` era vencido por classes com `display` (o seletor
+  *Valor total / Valor da parcela* aparecia mesmo oculto; o app só tinha
+  corrigido caso a caso no botão `#fab`).
+- O gerador de QR usa a biblioteca `qrcode.js` (MIT, ~20 KB) **só na página
+  pública** — o aplicativo em si não ganhou peso.
+
 **Como ficar com o caixa certo** — regra única do app:
 
 > Caixa = Saldo inicial + (todas as entradas − todas as saídas), de qualquer data.
@@ -471,5 +510,6 @@ a pedir esse PIN toda vez que abrir.
   `Store.init()` mudam — o resto do app não mexe.~~ ✅ **Feito na v1.6.0**
 - ~~**Fase 4 (início):** saldo por conta (Pix/poupança/cofrinho).~~ ✅ **Feito na
   v1.5.0** (contas com saldo próprio, transferência e rendimento).
-- **Fase 4 — Polimento:** ícone PNG 512×512,
-  busca de lançamentos, importar extrato do banco (.OFX).
+- ~~**Fase 4 — Polimento:** ícone PNG 512×512, busca de lançamentos,
+  gasto de terceiro por QR Code.~~ ✅ **Feito** (busca na v1.7.0, QR na v1.9.0).
+- **Fase 4 — Polimento:** importar extrato do banco (.OFX).

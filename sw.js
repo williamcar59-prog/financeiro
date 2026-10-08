@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.8.1";
+const VERSION = "1.9.0";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",
@@ -13,7 +13,10 @@ const ASSETS = [
   "./icon-maskable-512.png",
   "./apple-touch-icon.png",
   "./store.js",
-  "./app.js"
+  "./app.js",
+  /* página pública do terceiro + gerador de QR (v1.9.0) */
+  "./terceiro.html",
+  "./qrcode.js"
 ];
 
 self.addEventListener("install", (e) => {
