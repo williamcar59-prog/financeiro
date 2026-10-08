@@ -466,6 +466,48 @@ o QR/link** para a outra pessoa — que recebe na aba **👥 Terceiros** dela.
   (entradas e saídas). Se lançar as parcelas de trás **sem** refazer os meses,
   o caixa é descontado duas vezes e fica baixo demais.
 
+### 🗓️ A compra cai na fatura certa (v1.9.2)
+
+Antes a 1ª parcela nascia **no mesmo dia da compra** — mas o cartão fecha num
+dia e vence em outro. Agora o app usa o **Dia do fechamento** e o **Dia do
+vencimento** que você já cadastrou em ⚙️ Cartões (era só exibição):
+
+- **Em qual fatura cai** — a compra entra na fatura que fecha no primeiro
+  fechamento **igual ou posterior** à data da compra. *Fecha dia 22, comprou
+  em 04/10 → fatura que fecha **22/10**.*
+- **Quando o dinheiro sai** — o vencimento é o primeiro dia de vencimento
+  **depois** desse fechamento. *Vence dia 12 → **12/11/2026**.*
+- **A 1ª parcela nasce no vencimento** e as demais seguem mês a mês
+  (12/11, 12/12, 12/01/2027…). Com o campo **Já paguei** as próximas avançam
+  os meses delas: 3x com 2 pagas → começa em 12/01/2027. O cartão muda no
+  meio do lançamento? Cada compra é calculada pelo cartão escolhido.
+
+**Nada acontece em silêncio** — enquanto você preenche, uma faixa azul avisa
+dentro do formulário:
+
+> 🗓️ Fatura: a compra de **04/10/2026** entra na fatura que **fecha
+> 22/10/2026** e **vence 12/11/2026**. → as parcelas nascem em **12/11/2026**
+> e seguem mês a mês.
+
+O resumo também entra no *toast* de confirmação (`3x parcela criada · 1ª em
+12/11/2026`). Vale em **Novo lançamento**, **Gasto de terceiro** e na tela de
+**Receber gasto** (QR/link). Ao **editar** um registro já salvo o aviso some
+e nada é redesenhado — só o registro tocado muda. Sem cartão (Conta/Dinheiro)
+a data continua exatamente a que você digitou.
+
+**Consequência boa:** a *Fatura do mês* passa a somar o que você **paga**
+naquele mês, batendo com o rótulo `vence 12/…` do cartão — antes ela somava o
+que foi **comprado** no mês, e as duas coisas não eram o mesmo número.
+
+**Correção do mesmo caminho (v1.9.2)** — ao **editar** um lançamento de
+cartão, o campo *Pago com* voltava para a primeira **conta** e o *Salvar*
+trocava o cartão da parcela por conta, sem avisar. O destino agora volta
+marcado como estava.
+
+> ⚠️ O cálculo só fica certo se o cartão tiver o **Dia do fechamento** e o
+> **Dia do vencimento** corretos — confira em ⚙️ Cartões → ✏️ editar
+> (`Fechamento 22` · `Vencimento 12`).
+
 ### 📈 Onde entrou o dinheiro (Relatórios)
 
 Novo bloco em **Relatórios** com as entradas do mês por categoria e o %

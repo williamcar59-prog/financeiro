@@ -316,6 +316,21 @@
     agendarPush();
   }
 
+  /* =====================================================================
+     CICLO DA FATURA (v1.9.2)
+     Dia `n` do mês em ISO (m 1..12, aceita m fora do intervalo = vira ano),
+     encurtado em meses de menos dias. Calculado em UTC para o dia não
+     escorregar pelo fuso de quem está usando o app.
+     ===================================================================== */
+  function isoDia(y, m, n) {
+    const off = Math.floor((m - 1) / 12);
+    y += off;
+    m = (((m - 1) % 12) + 12) % 12 + 1;
+    const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const dia = Math.min(Math.max(1, Number(n) || 1), ultimo);
+    return new Date(Date.UTC(y, m - 1, dia)).toISOString().slice(0, 10);
+  }
+
   const Store = {
     DEFAULT_CATS,
 
@@ -722,6 +737,34 @@
       return list
         .filter((t) => t.type === "out")
         .reduce((s, t) => s + t.amount, 0);
+    },
+    /* ---- ciclo da fatura (v1.9.2) -------------------------------------
+       A compra entra na fatura que fecha no primeiro dia de fechamento
+       IGUAL OU POSTERIOR a ela; o vencimento é o primeiro dia de
+       vencimento DEPOIS desse fechamento. A 1ª parcela nasce no
+       vencimento — é quando o dinheiro realmente sai da conta.
+       Ex.: fecha 22, vence 12 · compra em 04/10 → fecha 22/10 · vence 12/11 */
+    cicloFatura(cardId, iso) {
+      const c = Store.card(cardId);
+      if (!c) return null;
+      const p = String(iso || "").split("-");
+      if (p.length < 3) return null;
+      const y = Number(p[0]), m = Number(p[1]), d = Number(p[2]);
+      if (!y || !m || !d) return null;
+      const compra = isoDia(y, m, d);
+      let fecha = isoDia(y, m, c.closing || 1);
+      if (fecha < compra) fecha = isoDia(y, m + 1, c.closing || 1);
+      const fy = Number(fecha.slice(0, 4));
+      const fm = Number(fecha.slice(5, 7));
+      let vence = isoDia(fy, fm, c.due || 10);
+      if (vence <= fecha) vence = isoDia(fy, fm + 1, c.due || 10);
+      return { fecha: fecha, vence: vence };
+    },
+    /* soma N meses a uma data ISO, encurtando meses curtos */
+    addMesesISO(iso, n) {
+      const p = String(iso || "").split("-");
+      if (p.length < 3) return iso;
+      return isoDia(Number(p[0]), Number(p[1]) + (Number(n) || 0), Number(p[2]));
     },
     /* fatura do cartão no mês = minhas compras + compras de terceiros
        (o banco cobra tudo, independentemente de quem gastou) */

@@ -8,8 +8,8 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.9.1";
-  const BUILD_DATE = "07/10/2026"; /* data da publicação */
+  const APP_VERSION = "1.9.2";
+  const BUILD_DATE = "08/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
@@ -212,6 +212,7 @@
       '<div class="grab"></div>' + html + "</div>";
     /* estado inicial do parcelamento (só aparece ao escolher o cartão) */
     syncParcelas($("#modal-root form"));
+    syncFatura($("#modal-root form"));
     /* foca só nos campos onde digitar é o primeiro passo — evita que o
        teclado abra sozinho ao mexer nos Ajustes */
     const f = $(
@@ -928,6 +929,7 @@
       "então dá para trocar à vontade se as informações vierem diferentes.</div></div>" +
       "</div>" +
       parcNovoHTML("Cada parcela vira um registro no mês correspondente.", qr.p) +
+      '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="field"><label>Obs.</label>' +
       '<input name="note" maxlength="80" placeholder="Ex.: comprou meu sapato" value="' + esc(qr.d) + '"></div>' +
       '<div class="hint strong" style="margin-bottom:12px">Nada foi gravado ainda — confira antes de adicionar.</div>' +
@@ -1718,16 +1720,25 @@
     const accounts = Store.accounts();
     const cards = Store.cards();
 
+    /* marca o destino ORIGINAL ao editar — sem isso o select voltava para a
+       1ª conta e o "Salvar" trocava o cartão da parcela por uma conta */
     const destOpts =
       '<optgroup label="Contas">' +
-      accounts.map((a) => '<option value="acc:' + a.id + '">' + esc(a.name) + "</option>").join("") +
+      accounts
+        .map(
+          (a) =>
+            '<option value="acc:' + a.id + '"' + (dest === "acc:" + a.id ? " selected" : "") + ">" +
+            esc(a.name) + "</option>"
+        )
+        .join("") +
       "</optgroup>" +
       (cards.length
         ? '<optgroup label="Cartões de crédito">' +
           cards
             .map(
               (c) =>
-                '<option value="card:' + c.id + '">' + esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</option>"
+                '<option value="card:' + c.id + '"' + (dest === "card:" + c.id ? " selected" : "") + ">" +
+                esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</option>"
             )
             .join("") +
           "</optgroup>"
@@ -1757,6 +1768,7 @@
       '<div class="field"><label>Data</label><input type="date" name="date" value="' + (t ? t.date : today()) + '"></div>' +
       '<div class="field"><label>Descrição</label><input name="note" placeholder="Opcional" value="' + esc(t ? t.note : "") + '"></div>' +
       "</div>" +
+      '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="form-actions">' +
       (t ? '<button type="button" class="btn danger" data-act="del-tx" data-id="' + t.id + '">Excluir</button>' : "") +
       '<button class="btn" type="submit">' + (t ? "Salvar" : "Adicionar") + "</button>" +
@@ -1781,6 +1793,7 @@
   /* mostra/esconde parcelas e "já paguei" conforme destino/tipo */
   function syncDest() {
     syncParcelas($("#modal-root form"));
+    syncFatura($("#modal-root form"));
   }
 
   /* esconde/mostra o parcelamento e calcula a prévia do valor.
@@ -1840,6 +1853,51 @@
         ? "Informe o valor de cada parcela"
         : "Total da compra: " + fmt(bruto * n);
     }
+  }
+
+  /* v1.9.2 — avisa em qual FATURA a compra cai e onde as parcelas vão
+     nascer. Vale só para lançamento novo (editar um registro já criado não
+     mexe nas parcelas) e some quando a data já é o próprio vencimento. */
+  function syncFatura(form) {
+    if (!form) return;
+    const box = $("#cicloInfo", form);
+    if (!box) return;
+    const esconder = function () {
+      box.hidden = true;
+      box.innerHTML = "";
+    };
+    if (form.dataset.id) return esconder();
+    const tipo = form.querySelector('[name="type"]:checked');
+    if (tipo && tipo.value !== "out") return esconder();
+    let cardId = null;
+    if (form.dest && String(form.dest.value || "").indexOf("card:") === 0)
+      cardId = form.dest.value.slice(5);
+    else if (form.cardId) cardId = form.cardId.value || null;
+    if (!cardId) return esconder();
+    const iso = (form.date && form.date.value) || today();
+    const ciclo = Store.cicloFatura(cardId, iso);
+    if (!ciclo || ciclo.vence === iso) return esconder();
+    /* parcelas já pagas andam os meses delas para frente */
+    const total = Math.max(1, Number(form.installments ? form.installments.value : 1) || 1);
+    const pagas =
+      total > 1 ? Math.max(0, Math.floor(Number(form.paid ? form.paid.value : 0) || 0)) : 0;
+    const primeira = Store.addMesesISO(ciclo.vence, pagas);
+    box.hidden = false;
+    box.innerHTML =
+      "<b>🗓️ Fatura:</b> a compra de <b>" +
+      fullDate(iso) +
+      "</b> entra na fatura que <b>fecha " +
+      fullDate(ciclo.fecha) +
+      "</b> e <b>vence " +
+      fullDate(ciclo.vence) +
+      "</b>." +
+      "<br>→ " +
+      (pagas
+        ? "com " + pagas + " já paga" + (pagas > 1 ? "s" : "") +
+          ", as próximas começam em <b>" + fullDate(primeira) + "</b>"
+        : "as parcelas nascem em <b>" + fullDate(primeira) + "</b>") +
+      " e seguem mês a mês." +
+      '<span class="dica">Assim o caixa desconta quando a fatura é paga, e não no dia da compra.</span>';
   }
 
   /* =====================================================================
@@ -1925,6 +1983,7 @@
       '<div class="field"><label>Cartão usado</label><select name="cardId">' + cardOpts + "</select></div>" +
       "</div>" +
       parcelas +
+      '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="field"><label>Obs.</label><input name="note" placeholder="Ex.: comprou meu sapato" value="' + esc(t ? t.note : "") + '"></div>' +
       (t
         ? '<div class="field"><label>Situação</label><select name="status">' +
@@ -2390,8 +2449,10 @@
     if (!Store.auth || !Store.auth.session()) return; /* sem login não há app */
     $("#view").innerHTML = (VIEWS[state.route] || viewHome)();
     /* a prévia do parcelamento da tela de recebimento acompanha o cartão */
-    if (state.route === "receber")
+    if (state.route === "receber") {
       syncParcelas($('#view form[data-form="third"]'));
+      syncFatura($('#view form[data-form="third"]'));
+    }
     $$("#tabbar button").forEach((b) =>
       b.classList.toggle("active", b.dataset.route === state.route)
     );
@@ -3075,9 +3136,13 @@
       e.target.name === "type" ||
       e.target.name === "installments" ||
       e.target.name === "cardId" ||
-      e.target.name === "vmode"
-    )
+      e.target.name === "vmode" ||
+      e.target.name === "date" ||
+      e.target.name === "paid"
+    ) {
       syncParcelas(e.target.closest("form"));
+      syncFatura(e.target.closest("form"));
+    }
     if (e.target.name === "modo") syncMove(e.target.closest("form"));
     /* menu de visão da tela de Terceiros (mês · resumo geral · pessoa) */
     if (e.target.name === "tdview") {
@@ -3105,6 +3170,8 @@
   /* a prévia do parcelamento acompanha o valor enquanto digita */
   document.addEventListener("input", (e) => {
     if (e.target.name === "amount") syncParcelas(e.target.closest("form"));
+    /* o aviso da fatura acompanha a data enquanto digita */
+    if (e.target.name === "date") syncFatura(e.target.closest("form"));
     /* escala da interface muda em tempo real enquanto arrasta */
     if (e.target.name === "escala") aplicarEscala(e.target.value);
     /* busca dos lançamentos: filtra enquanto digita e mantém o cursor
@@ -3293,6 +3360,17 @@
       const total =
         isCard && base.type === "out" ? Math.max(1, Number(fd.get("installments")) || 1) : 1;
       const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
+      /* v1.9.2: no cartão a compra nasce na fatura certa — a 1ª parcela é
+         datada do vencimento do ciclo em que a compra caiu (fecha >= data
+         da compra), e as parcelas já pagas avançam os meses delas */
+      let naFatura = false;
+      if (isCard && base.type === "out") {
+        const ciclo = Store.cicloFatura(base.cardId, base.date);
+        if (ciclo && ciclo.vence !== base.date) {
+          base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
+          naFatura = true;
+        }
+      }
       const restam = total - pagas;
       if (total > 1) {
         if (restam <= 0)
@@ -3308,11 +3386,15 @@
         toast(
           restam + "x parcela criada" +
             (valores ? " de " + fmt(valores[pagas]) : "") +
-            (pagas ? " · da " + (pagas + 1) + "/" + total : "")
+            (pagas ? " · da " + (pagas + 1) + "/" + total : "") +
+            (naFatura ? " · 1ª em " + fullDate(base.date) : "")
         );
       } else {
         Store.addTx(base);
-        toast("Lançamento adicionado");
+        toast(
+          "Lançamento adicionado" +
+            (naFatura ? " · fatura vence " + fullDate(base.date) : "")
+        );
       }
     }
     closeSheet();
@@ -3384,6 +3466,15 @@
         ? Math.max(1, Number(fd.get("installments")) || 1)
         : 1;
       const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
+      /* mesma regra do lançamento (v1.9.2): nasce no vencimento da fatura */
+      let naFatura = false;
+      if (base.cardId) {
+        const ciclo = Store.cicloFatura(base.cardId, base.date);
+        if (ciclo && ciclo.vence !== base.date) {
+          base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
+          naFatura = true;
+        }
+      }
       const restam = total - pagas;
       if (total > 1) {
         if (restam <= 0)
@@ -3399,11 +3490,15 @@
         toast(
           restam + "x parcela criada" +
             (valores ? " de " + fmt(valores[pagas]) : "") +
-            (pagas ? " · da " + (pagas + 1) + "/" + total : "")
+            (pagas ? " · da " + (pagas + 1) + "/" + total : "") +
+            (naFatura ? " · 1ª em " + fullDate(base.date) : "")
         );
       } else {
         Store.addThird(base);
-        toast("Gasto de terceiro registrado");
+        toast(
+          "Gasto de terceiro registrado" +
+            (naFatura ? " · fatura vence " + fullDate(base.date) : "")
+        );
       }
     }
     /* tela de recebimento por QR (v1.9.0): confirma e volta para a aba */
