@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.9.0";
+  const APP_VERSION = "1.9.1";
   const BUILD_DATE = "07/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -923,7 +923,9 @@
       '<div class="field"><label>Data da compra</label>' +
       '<input type="date" name="date" value="' + esc(qr.dt) + '"></div>' +
       '<div class="field"><label>Cartão usado</label>' +
-      '<select name="cardId"' + (precisaCartao ? " required" : "") + ">" + cardOpts + "</select></div>" +
+      '<select name="cardId"' + (precisaCartao ? " required" : "") + ">" + cardOpts + "</select>" +
+      '<div class="hint">São <b>os seus cartões</b> — o link não traz cartão nenhum, ' +
+      "então dá para trocar à vontade se as informações vierem diferentes.</div></div>" +
       "</div>" +
       parcNovoHTML("Cada parcela vira um registro no mês correspondente.", qr.p) +
       '<div class="field"><label>Obs.</label>' +
@@ -968,6 +970,111 @@
     if (navigator.clipboard && navigator.clipboard.writeText)
       navigator.clipboard.writeText(txt).then(ok, legado);
     else legado();
+  }
+
+  /* ---------------- enviar UM LANÇAMENTO como gasto de terceiro (v1.9.1) --- */
+  /* mesmo formato de link do QR da terceiro.html: valor, data, parcelas e
+     descrição. NÃO vai cartão nem nome — quem recebe escolhe os dele. */
+  let shareTexto = "";
+  let shareGif = "";
+
+  function linkReceber(total, n, iso, desc) {
+    const qs =
+      "?v=" + total +
+      "&dt=" + encodeURIComponent(iso || today()) +
+      "&p=" + (n || 1) +
+      (desc ? "&d=" + encodeURIComponent(String(desc).slice(0, 80)) : "");
+    return (
+      location.origin +
+      location.pathname.replace(/index\.html$/, "") +
+      "#/receber" + qs
+    );
+  }
+
+  function resumoQR(total, n, iso, desc) {
+    return (
+      (desc ? desc + " · " : "") + fmt(total) +
+      (n > 1 ? " em " + n + "x" : "") +
+      " · " + fullDate(iso || today())
+    );
+  }
+
+  /* gera o QR dentro do próprio formulário — ele continua preenchido, então
+     dá para compartilhar e depois ainda salvar o lançamento (ou o contrário) */
+  function txShare() {
+    const form = document.querySelector('#modal-root form[data-form="tx"]');
+    if (!form) return;
+    const bruto = parseMoney(form.amount ? form.amount.value : "");
+    if (!(bruto > 0)) {
+      const el = form.querySelector('[name="amount"]');
+      if (el) el.focus();
+      return toast("Informe o valor para compartilhar");
+    }
+    /* mesma regra do app: parcela só existe em cartão (dest = "card:...") */
+    const dest = form.dest ? String(form.dest.value || "") : "";
+    const n =
+      dest.indexOf("card:") === 0
+        ? Math.min(24, Math.max(1, Number(form.installments && form.installments.value) || 1))
+        : 1;
+    const vm = form.querySelector('[name="vmode"]:checked');
+    /* o valor pode ter sido digitado por PARCELA — o link leva o total */
+    const total = n > 1 && vm && vm.value === "parc" ? bruto * n : bruto;
+    const iso = (form.date && form.date.value) || today();
+    let desc = String((form.note && form.note.value) || "").trim();
+    if (!desc && form.catId && form.catId.selectedIndex >= 0) {
+      desc = String(form.catId.options[form.catId.selectedIndex].text || "")
+        .replace(/^\S+\s+/, "") /* tira o ícone da categoria */
+        .trim();
+    }
+    desc = desc.slice(0, 80);
+
+    const link = linkReceber(total, n, iso, desc);
+    const resumo = resumoQR(total, n, iso, desc);
+    shareTexto = "Gasto de terceiro: " + resumo + "\n" + link;
+    shareGif = "";
+    let imgHTML = "";
+    if (typeof qrcode === "function") {
+      try {
+        const qr = qrcode(0, "M");
+        qr.addData(link);
+        qr.make();
+        imgHTML = qr.createImgTag(6, 10, "QR Code do gasto");
+        shareGif = qr.createDataURL(10, 12);
+      } catch (e) {
+        imgHTML = "";
+        shareGif = "";
+      }
+    }
+
+    const velho = document.getElementById("txQrBox");
+    if (velho) velho.remove();
+    form.insertAdjacentHTML(
+      "beforeend",
+      '<div id="txQrBox" class="card" style="margin-top:14px;padding:14px">' +
+        '<div class="hint" style="margin-top:0;margin-bottom:8px"><b>📤 QR gerado</b> — envie para quem vai lançar ' +
+        "no app dele (ele lê com a câmera ou abre o link e confirma).</div>" +
+        (imgHTML
+          ? '<div style="text-align:center">' + imgHTML + "</div>"
+          : '<div class="hint">Não deu para gerar a imagem do QR — use o link abaixo.</div>') +
+        '<div class="hint strong" style="margin-top:8px">' + esc(resumo) + "</div>" +
+        '<div class="field"><label>Link do gasto</label><input readonly value="' + esc(link) + '"></div>' +
+        '<div class="form-actions">' +
+        '<button class="btn ghost" type="button" data-act="tx-share-zap">🟢 WhatsApp</button>' +
+        '<button class="btn ghost" type="button" data-act="tx-share-copy">📋 Copiar link</button>' +
+        "</div>" +
+        '<div class="form-actions">' +
+        (shareGif ? '<button class="btn ghost" type="button" data-act="tx-share-png">⬇️ Imagem do QR</button>' : "") +
+        '<button class="btn ghost" type="button" data-act="tx-share-close">Fechar</button>' +
+        "</div>" +
+        '<div class="hint">O link leva <b>valor, data, parcelas e descrição</b> — nunca o cartão. ' +
+        "Quem recebe confere tudo e escolhe o cartão dele antes de adicionar.</div>" +
+        '<div class="hint">O lançamento ainda <b>não foi salvo</b> — use <b>Adicionar</b> acima se quiser ' +
+        "guardar uma cópia também no seu app.</div>" +
+      "</div>"
+    );
+    const box = document.getElementById("txQrBox");
+    if (box && box.scrollIntoView) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    toast("QR gerado ✓");
   }
 
   /* aceita a URL inteira ou só o trecho "#/receber?..." */
@@ -1653,6 +1760,9 @@
       '<div class="form-actions">' +
       (t ? '<button type="button" class="btn danger" data-act="del-tx" data-id="' + t.id + '">Excluir</button>' : "") +
       '<button class="btn" type="submit">' + (t ? "Salvar" : "Adicionar") + "</button>" +
+      "</div>" +
+      '<div class="form-actions">' +
+      '<button class="btn ghost" type="button" data-act="tx-share">📤 Compartilhar com terceiro</button>' +
       "</div></form>"
     );
     setTimeout(syncDest, 0);
@@ -2530,6 +2640,52 @@
     "qr-scan"() { qrScan(); },
     "qr-copiar-pag"() {
       copiarTexto(urlTerceiro(), "Link copiado ✓ — mande para quem vai comprar");
+    },
+    /* ---------------- enviar lançamento como gasto de terceiro (v1.9.1) --- */
+    "tx-share"() { txShare(); },
+    "tx-share-zap"() {
+      if (!shareTexto) return toast("Gere o QR primeiro");
+      const url = "https://wa.me/?text=" + encodeURIComponent(shareTexto);
+      const w = window.open(url, "_blank");
+      if (!w) location.href = url; /* navegador bloqueou a nova aba */
+    },
+    "tx-share-copy"() {
+      const el = document.querySelector("#txQrBox input[readonly]");
+      copiarTexto(el ? el.value : shareTexto.split("\n").pop(), "Link copiado ✓");
+    },
+    /* baixa a imagem do QR — o gerador devolve GIF, então converte em PNG
+       (canvas não é bloqueado por data URL); se falhar, baixa o original */
+    "tx-share-png"() {
+      const gif = shareGif;
+      if (!gif) return;
+      const baixar = function (u, nome) {
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = nome;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      const im = new Image();
+      im.onload = function () {
+        try {
+          const cv = document.createElement("canvas");
+          cv.width = im.width;
+          cv.height = im.height;
+          cv.getContext("2d").drawImage(im, 0, 0);
+          baixar(cv.toDataURL("image/png"), "gasto-terceiro.png");
+        } catch (e) {
+          baixar(gif, "gasto-terceiro.gif");
+        }
+      };
+      im.onerror = function () { baixar(gif, "gasto-terceiro.gif"); };
+      im.src = gif;
+    },
+    "tx-share-close"() {
+      const box = document.getElementById("txQrBox");
+      if (box) box.remove();
+      shareTexto = "";
+      shareGif = "";
     },
 
     "close-modal"() { closeSheet(); },

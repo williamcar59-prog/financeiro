@@ -428,6 +428,33 @@ sem digitar. Agora ele mesmo lança, e o dado chega pronto:
 - O gerador de QR usa a biblioteca `qrcode.js` (MIT, ~20 KB) **só na página
   pública** — o aplicativo em si não ganhou peso.
 
+### 📤 Compartilhar o lançamento com um terceiro (v1.9.1)
+
+Caminho contrário ao da página pública: **quem lança primeiro e depois manda
+o QR/link** para a outra pessoa — que recebe na aba **👥 Terceiros** dela.
+
+- **Botão 📤 Compartilhar com terceiro** — aparece em **Novo lançamento** e
+  também em **Editar lançamento** (ou seja, dá para compartilhar um gasto já
+  salvo: toque no lançamento → Compartilhar). Ele lê o que está no
+  formulário e desenha o QR **dentro do próprio formulário**, que continua
+  aberto — dá para compartilhar e ainda salvar logo em seguida (ou o
+  contrário).
+- **O link leva valor, data, parcelas e descrição** — mesmo formato
+  `#/receber?v=..&dt=..&p=..&d=..` do QR da página pública. Se o valor foi
+  digitado **por parcela**, o link leva o **total**; sem cartão escolhido vai
+  **p=1**, porque parcela só existe em cartão (regra única do app).
+- **Caixa do QR com** 🟢 WhatsApp (abre em nova aba, sem sair do
+  formulário), 📋 Copiar link, ⬇️ Imagem do QR (PNG) e Fechar.
+- **O cartão nunca vai no link.** Quem recebe escolhe entre **os cartões
+  cadastrados dele** na tela de confirmação — e o campo é **obrigatório
+  quando há parcelas**. Como os dois lados podem ter cadastros diferentes,
+  tudo continua editável antes de confirmar: valor, data, parcelas, quem
+  comprou, observação e cartão. A própria tela avisa:
+  *"São os seus cartões — o link não traz cartão nenhum."*
+- `qrcode.js` passou a ser carregado também no `index.html` (já estava no
+  cache do service worker, então **não aumenta o download** online) e só é
+  usado quando você toca em Compartilhar.
+
 **Como ficar com o caixa certo** — regra única do app:
 
 > Caixa = Saldo inicial + (todas as entradas − todas as saídas), de qualquer data.
