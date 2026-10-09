@@ -564,8 +564,11 @@ do painel, que aponta para a raiz do `github.io` — onde não existe site.
 Corrigido em três camadas:
 
 - **O e-mail agora volta para o app**: `recover()` manda
-  `redirect_to = endereço atual` e a confirmação de cadastro ganhou
-  `email_redirect_to` (tinha o mesmo defeito).
+  `redirect_to = endereço atual` **na query string**
+  (`/auth/v1/recover?redirect_to=…`) — descoberta importante: mandado só no
+  corpo do POST, o Supabase ignora e o link volta para o **endereço de quem
+  enviou** (a raiz do `github.io`, sem site). E a confirmação de cadastro
+  ganhou `email_redirect_to` (tinha o mesmo defeito).
 - **Nova janela "🔒 Defina sua nova senha"**: o link agora abre o app e
   mostra os campos *Nova senha* + *Repita* (mín. 6 caracteres) — **antes não
   existia tela para trocar a senha**, então o link entrava na conta e nada
