@@ -1181,17 +1181,19 @@
        O Supabase responde 200 mesmo quando o e-mail não existe (não vaza
        quem tem conta) — por isso o retorno é sempre o mesmo texto. */
     async recover(email) {
-      await supa("/auth/v1/recover", {
-        method: "POST",
-        auth: false,
-        body: JSON.stringify({
-          email: email,
-          /* SEM isto o Supabase usa a "Site URL" do painel (que está na raiz
-             do github.io, onde não existe site) e o link do e-mail caía num
-             404 do GitHub Pages. Aqui o destino é sempre ESTE app. */
-          redirect_to: location.origin + location.pathname
-        })
-      });
+      /* Destino do link do e-mail. Atenção: o GoTrue lê o redirect_to na
+         QUERY STRING — no corpo do POST ele é ignorado e o link volta pro
+         Referer (a raiz do github.io, onde não existe site → 404 do GitHub).
+         Mandamos nos dois lugares por segurança. */
+      const destino = location.origin + location.pathname;
+      await supa(
+        "/auth/v1/recover?redirect_to=" + encodeURIComponent(destino),
+        {
+          method: "POST",
+          auth: false,
+          body: JSON.stringify({ email: email, redirect_to: destino })
+        }
+      );
       return true;
     },
 
