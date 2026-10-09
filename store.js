@@ -228,7 +228,10 @@
     { id: "in_reembolso", kind: "in", name: "Reembolso", icon: "↩️" },
     { id: "in_vendas", kind: "in", name: "Vendas", icon: "🏷️" },
     { id: "in_invest", kind: "in", name: "Rendimentos", icon: "📈" },
-    { id: "in_outros", kind: "in", name: "Outras entradas", icon: "➕" }
+    { id: "in_vale", kind: "in", name: "Crédito VR/VA", icon: "🏢" },
+    { id: "in_emprestimo", kind: "in", name: "Empréstimo recebido", icon: "🏦" },
+    { id: "in_outros", kind: "in", name: "Outras entradas", icon: "➕" },
+    { id: "out_emprestimo", kind: "out", name: "Parcela de empréstimo", icon: "🏦" }
   ];
 
   function seed() {
@@ -300,6 +303,18 @@
       if (t.cardId === undefined) t.cardId = null;
       if (!t.createdAt) t.createdAt = t.date ? t.date + "T12:00:00.000Z" : new Date().toISOString();
     });
+    /* v1.10: categorias criadas depois não aparecem em base antiga — anexa
+       só as que faltam (a ordem do DEFAULT_CATS é preservada) */
+    if (Array.isArray(db.categories)) {
+      DEFAULT_CATS.forEach((c) => {
+        if (!db.categories.some((x) => x && x.id === c.id)) db.categories.push(c);
+      });
+    }
+    /* v1.10: tipo do cartão — crédito (padrão) | vale (VR/VA) | empréstimo */
+    if (Array.isArray(db.cards))
+      db.cards.forEach((c) => {
+        if (c && typeof c === "object" && !c.kind) c.kind = "credito";
+      });
     if (!db.settings || typeof db.settings !== "object") db.settings = { initialBalance: 0 };
     if (typeof db.settings.initialBalance !== "number") db.settings.initialBalance = 0;
     if (db.settings.initialBalance) {
@@ -496,15 +511,25 @@
     card(id) {
       return Store.data.cards.find((c) => c.id === id) || null;
     },
+    /* tipo do cartão — dados antigos não têm `kind`, então valem crédito */
+    cardKind(c) {
+      const k = c && c.kind;
+      return k === "vale" || k === "emprestimo" ? k : "credito";
+    },
     addCard(c) {
       const item = Object.assign(
         {
           id: "card_" + Store.uid(),
+          kind: "credito", /* credito | vale (VR/VA) | emprestimo */
           name: "Cartão",
           final: "",
           limit: 0,
           closing: 1,
-          due: 10
+          due: 10,
+          credito: 0,      /* crédito mensal do vale (VR/VA) */
+          parcelas: 0,     /* empréstimo: total de parcelas */
+          valorParcela: 0, /* empréstimo: valor de cada parcela */
+          taxa: 0          /* empréstimo: % ao mês, só de registro */
         },
         c
       );
@@ -747,6 +772,8 @@
     cicloFatura(cardId, iso) {
       const c = Store.card(cardId);
       if (!c) return null;
+      /* vale não tem fatura e empréstimo não tem "compra" — sem ciclo */
+      if (Store.cardKind(c) !== "credito") return null;
       const p = String(iso || "").split("-");
       if (p.length < 3) return null;
       const y = Number(p[0]), m = Number(p[1]), d = Number(p[2]);
@@ -801,6 +828,59 @@
         .filter((t) => t.cardId === cardId)
         .reduce((s, t) => s + t.amount, 0);
       return mine + others;
+    },
+    /* ---------- VALE (VR/VA) --------------------------------------------
+       crédito que a empresa deposita no mês, o que já foi usado (minhas
+       compras + de terceiros) e o que já foi lançado como ↑ Entrada pelo
+       botão "📥 Lançar crédito do mês". */
+    valeSaldo(cardId, mk) {
+      const c = Store.card(cardId);
+      if (!c) return null;
+      const credito = Math.max(0, Number(c.credito) || 0);
+      const usado = Store.cardInvoice(cardId, mk).total;
+      const lancado = Store.data.transactions
+        .filter(
+          (t) => t.cardId === cardId && t.type === "in" && t.date.slice(0, 7) === mk
+        )
+        .reduce((s, t) => s + t.amount, 0);
+      return {
+        credito,
+        usado,
+        lancado,
+        saldo: credito - usado,
+        pct: credito > 0 ? Math.min(100, Math.round((usado / credito) * 100)) : 0
+      };
+    },
+    /* ---------- EMPRÉSTIMO / FINANCIAMENTO ------------------------------
+       total a pagar = parcelas × valor; falta = parcelas com data de hoje
+       em diante (as que ainda vão vencer); pago = o resto — assim um
+       financiamento antigo já dá progresso sozinho, sem campo "paguei". */
+    emprestimoInfo(cardId) {
+      const c = Store.card(cardId);
+      if (!c) return null;
+      const n = Math.max(1, Number(c.parcelas) || 1);
+      const valor = Math.max(0, Number(c.valorParcela) || 0);
+      const total = valor * n;
+      const hoje = new Date().toISOString().slice(0, 10);
+      const restantes = Store.data.transactions
+        .filter((t) => t.cardId === cardId && t.type === "out" && t.date >= hoje)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const falta = restantes.reduce((s, t) => s + t.amount, 0);
+      const criadas = Store.data.transactions.filter(
+        (t) => t.cardId === cardId && t.type === "out"
+      ).length;
+      return {
+        parcelas: n,
+        valorParcela: valor,
+        taxa: Math.max(0, Number(c.taxa) || 0),
+        total,
+        falta,
+        pago: Math.max(0, total - falta),
+        restam: restantes.length,
+        criadas,
+        pct: total > 0 ? Math.min(100, Math.round(((total - falta) / total) * 100)) : 0,
+        proxima: restantes[0] || null
+      };
     },
     thirdOpenSum() {
       return Store.data.third

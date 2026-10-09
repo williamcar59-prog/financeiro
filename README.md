@@ -508,6 +508,54 @@ marcado como estava.
 > **Dia do vencimento** corretos — confira em ⚙️ Cartões → ✏️ editar
 > (`Fechamento 22` · `Vencimento 12`).
 
+### 🍽️🏢 VR/VA e 🏦 Empréstimo/Financiamento (v1.10.0)
+
+Até agora só existia **cartão de crédito** — e todo mundo pergunta a mesma
+coisa: *"e o VR?"*, *"e a parcela do empréstimo?"*. Agora são três tipos de
+registro, cada um com a sua própria regra (⚙️ Cartões → **+ Novo cartão** →
+campo **Tipo**):
+
+#### 🍽️ Vale (VR/VA) — crédito mensal com saldo
+
+- Você informa **quanto foi depositado** (`Crédito do mês`) e o app cuida do
+  resto: no cartão aparece `Usado R$ 50 · Saldo R$ 1.050` com uma **barra** de
+  quanto falta.
+- Todo mês, toque em **📥 Lançar crédito do mês** — ele cria uma **↑ Entrada**
+  na categoria **Crédito VR/VA** e libera o saldo. O botão fica
+  `✅ Crédito ... já lançado` para não lançar duas vezes.
+- Compra paga com vale = **1 lançamento**, sem parcelas (não existe parcela em
+  VR), **sem fechamento/vencimento** e ele **não aparece** como destino de
+  pagamento de empréstimo.
+
+#### 🏦 Empréstimo / Financiamento — parcelado de verdade
+
+- No cadastro você marca **"O valor já entrou como ↑ Entrada?"** — se marcar
+  **Sim**, o app cria a entrada **Empréstimo recebido** (ex.: R$ 18.000 na
+  conta). Marque **Não** se esse dinheiro já está no **Saldo inicial**.
+- **Nº de parcelas + valor da parcela** (a taxa é só informativa): 60 ×
+  R$ 450 → `Total R$ 27.000`.
+- Na tela 🏠 Home o rosto mostra:
+  `Falta pagar R$ 18.000 · Pago R$ 9.000 de R$ 27.000 · 33% · Restam 40 de 60
+  · Próxima 10/10/2026`, com **barra de progresso**.
+- O **progresso é calculado pela data**: você diz quantas parcelas já pagas e
+  o app cria só as que **faltam**, a partir do 1º vencimento futuro. O caixa
+  não fica negativo no histórico.
+- O empréstimo **não pode ser destino de pagamento** de um gasto (as parcelas
+  nascem sozinhas) e o aviso de vencimento muda para `🏦 Parcela de ...`.
+- Parcelas saem como **↓ Saída · Parcela de empréstimo**, dia a dia, no mês
+  certo.
+
+#### O que continua igual
+
+- **💳 Cartão de crédito**: fechamento + vencimento, parcelas nas datas da
+  fatura, *Fatura do mês* — tudo como na v1.9.2.
+- A **Home → 💳 Faturas do mês** agora lista **só cartão de crédito**; vales e
+  empréstimos têm o seu próprio rosto na página **⚙️ Cartões**, que passou a
+  ser dividida em três seções: 💳 **Crédito** · 🍽️ **Vales** · 🏦
+  **Empréstimos**.
+- **QR/link do terceiro**: continua sem cartão dentro — só valor, parcelas e
+  data.
+
 ### 📈 Onde entrou o dinheiro (Relatórios)
 
 Novo bloco em **Relatórios** com as entradas do mês por categoria e o %

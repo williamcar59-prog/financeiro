@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.9.2";
+  const APP_VERSION = "1.10.0";
   const BUILD_DATE = "08/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -335,7 +335,10 @@
     const cash = before + saldo;
     const prevLabel = monthLabel(addMonths(mk, -1));
     const cards = Store.cards();
-    const invTotal = cards.reduce((s, c) => s + Store.cardInvoice(c.id, mk).total, 0);
+    /* "Faturas do mês" = só cartão de crédito: vale não tem fatura e
+       empréstimo tem parcela própria (mostrada no rosto dele) */
+    const faturas = cards.filter((c) => Store.cardKind(c) === "credito");
+    const invTotal = faturas.reduce((s, c) => s + Store.cardInvoice(c.id, mk).total, 0);
     const somaContas = Store.accBalances(mk).reduce((s, x) => s + x.v, 0);
 
     if (!list.length && !cards.length && !Store.data.third.length && Store.openingTotal() === 0) {
@@ -388,7 +391,7 @@
 
       /* indicadores */
       '<div class="grid3">' +
-      mini("💳", "Faturas do mês", fmt(invTotal)) +
+      mini("💳", "Faturas do mês", faturas.length ? fmt(invTotal) : "—") +
       mini("👥", "A receber", fmt(tdOpen), "warn") +
       mini("🧾", "Lançamentos", String(list.length)) +
       "</div>" +
@@ -400,7 +403,7 @@
           cards.slice(0, 3).map((c) => cardRow(c, mk)).join("") +
           "</div>"
         : '<div class="sec-title">Cartões</div>' +
-          '<div class="card"><button class="btn ghost" data-act="new-card">+ Cadastrar cartão de crédito</button></div>') +
+          '<div class="card"><button class="btn ghost" data-act="new-card">+ Cadastrar cartão, vale ou empréstimo</button></div>') +
 
       /* recentes */
       '<div class="sec-title">Últimos lançamentos <button data-act="goto" data-route="tx">ver todos</button></div>' +
@@ -464,18 +467,38 @@
   }
 
   function cardRow(c, mk) {
-    const inv = Store.cardInvoice(c.id, mk);
+    const k = Store.cardKind(c);
+    const tipo = cardTipo(c);
     const [y, m] = mk.split("-").map(Number);
     const due = new Date(y, m - 1, Math.min(Number(c.due) || 1, 28));
     const dueStr = String(due.getDate()).padStart(2, "0") + "/" + String(due.getMonth() + 1).padStart(2, "0");
+    let pill, val, extra = "";
+    if (k === "vale") {
+      /* vale: mostra o saldo que sobrou do crédito do mês */
+      const v = Store.valeSaldo(c.id, mk);
+      pill = '<span class="pill">saldo ' + fmt(v.saldo) + "</span>";
+      val = fmt(v.usado);
+      if (v.lancado) extra = '<span class="pill parcela">crédito lançado</span>';
+    } else if (k === "emprestimo") {
+      /* empréstimo: quanto falta pagar e a próxima parcela */
+      const e = Store.emprestimoInfo(c.id);
+      pill = '<span class="pill">' +
+        (e.proxima ? "próx. " + e.proxima.date.slice(8, 10) + "/" + e.proxima.date.slice(5, 7) : "quitado") + "</span>";
+      extra = '<span class="pill parcela">restam ' + e.restam + "</span>";
+      val = fmt(e.falta);
+    } else {
+      const inv = Store.cardInvoice(c.id, mk);
+      pill = '<span class="pill">vence ' + dueStr + "</span>";
+      if (inv.others) extra = '<span class="pill parcela">terceiros ' + fmt(inv.others) + "</span>";
+      val = fmt(inv.total);
+    }
     return (
       '<div class="row-item" data-act="edit-card" data-id="' + c.id + '">' +
-      '<div class="row-ico">💳</div>' +
+      '<div class="row-ico">' + tipo.ico + "</div>" +
       '<div class="row-mid"><div class="t">' + esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</div>" +
-      '<div class="s"><span class="pill">vence ' + dueStr + "</span>" +
-      (inv.others ? '<span class="pill parcela">terceiros ' + fmt(inv.others) + "</span>" : "") +
+      '<div class="s">' + pill + extra +
       "</div></div>" +
-      '<div class="row-val out">' + fmt(inv.total) + "</div></div>"
+      '<div class="row-val out">' + val + "</div></div>"
     );
   }
 
@@ -680,7 +703,7 @@
     const cats = Store.categories().filter(
       (c) => !(c.id.indexOf("in_") === 0 || c.kind === "in")
     );
-    const cards = Store.cards();
+    const cards = pagaveis();
     const destOpts =
       '<optgroup label="Contas">' +
       Store.accounts()
@@ -688,12 +711,11 @@
         .join("") +
       "</optgroup>" +
       (cards.length
-        ? '<optgroup label="Cartões de crédito">' +
+        ? '<optgroup label="Cartões e vales">' +
           cards
             .map(
               (c) =>
-                '<option value="card:' + c.id + '">' + esc(c.name) +
-                (c.final ? " •" + esc(c.final) : "") + "</option>"
+                '<option value="card:' + c.id + '">' + esc(cardLabel(c)) + "</option>"
             )
             .join("") +
           "</optgroup>"
@@ -728,30 +750,149 @@
   /* =====================================================================
      TELA: CARTÕES
      ===================================================================== */
+  /* =====================================================================
+     CARTÕES — tipos (v1.10.0): crédito · vale (VR/VA) · empréstimo
+     ===================================================================== */
+  /* quais cartões podem SER forma de pagar: crédito e vale.
+     Empréstimo é o contrário — ele é que é pago, não paga nada. */
+  function pagaveis() {
+    return Store.cards().filter((c) => Store.cardKind(c) !== "emprestimo");
+  }
+  /* nome do cartão com o ícone do tipo (listas de destino) */
+  function cardLabel(c) {
+    return cardTipo(c).ico + " " + c.name + (c.final ? " •" + c.final : "");
+  }
+  /* ícone + nome do tipo, para o rosto do cartão, as seções e as listas */
+  function cardTipo(c) {
+    const k = Store.cardKind(c);
+    if (k === "vale")
+      return c.sub === "va"
+        ? { ico: "🛒", nome: "Vale alimentação · VA" }
+        : { ico: "🍽️", nome: "Vale refeição · VR" };
+    if (k === "emprestimo")
+      return c.sub === "fin"
+        ? { ico: "🏠", nome: "Financiamento" }
+        : { ico: "🏦", nome: "Empréstimo bancário" };
+    return { ico: "💳", nome: "Cartão de crédito" };
+  }
+
   function viewCards() {
     const cards = Store.cards();
     const mk = state.month;
     const cur = monthKey(today());
+    const grupos = [
+      { k: "credito", ico: "💳", t: "Cartões de crédito" },
+      { k: "vale", ico: "🍽️", t: "Vales (VR/VA)" },
+      { k: "emprestimo", ico: "🏦", t: "Empréstimos e financiamentos" }
+    ];
 
     let body;
     if (!cards.length) {
       body =
-        '<div class="empty"><div class="big">💳</div><h3>Nenhum cartão cadastrado</h3>' +
-        "<p>Cadastre seus cartões para acompanhar fatura, limite disponível, fechamento e vencimento — e para registrar quem gasta com o seu cartão.</p>" +
+        '<div class="empty"><div class="big">💳</div><h3>Nada cadastrado ainda</h3>' +
+        "<p>Além dos cartões de crédito, dá para cadastrar o seu <b>VR/VA</b> (vale refeição/alimentação com saldo mensal) e um <b>empréstimo ou financiamento</b> para acompanhar quanto já falta pagar.</p>" +
         '<button class="btn" data-act="new-card">Cadastrar cartão</button></div>';
     } else {
-      body = cards.map((c) => ccCard(c, mk, cur)).join("");
+      body = grupos
+        .map((g) => {
+          const lista = cards.filter((c) => Store.cardKind(c) === g.k);
+          if (!lista.length) return "";
+          return (
+            '<div class="sec-title">' + g.ico + " " + g.t +
+            ' <span style="font-weight:400;color:var(--ink-3)">' + lista.length + "</span></div>" +
+            lista.map((c) => ccCard(c, mk, cur)).join("")
+          );
+        })
+        .join("");
     }
 
+    const resumo = grupos
+      .map((g) => {
+        const n = cards.filter((c) => Store.cardKind(c) === g.k).length;
+        return n ? g.ico + " " + n : null;
+      })
+      .filter(Boolean)
+      .join(" · ");
+
     return (
-      '<div class="top"><div><h1>Cartões de crédito</h1>' +
-      '<div class="sub">' + (cards.length ? cards.length + " cartão(s) ativo(s)" : "Fatura, limite e vencimento") + "</div></div>" +
+      '<div class="top"><div><h1>Cartões</h1>' +
+      '<div class="sub">' + (cards.length ? resumo : "Fatura, vale e dívida num lugar só") + "</div></div>" +
       '<button class="icon-btn" data-act="new-card" aria-label="Novo cartão">＋</button></div>' +
       body
     );
   }
 
   function ccCard(c, mk, cur) {
+    /* cor do cartão: usa a salva ou a padrão (protege dados antigos/importados) */
+    const cor = /^#[0-9a-f]{6}$/i.test(c.color || "") ? c.color : CARD_COLORS[0];
+    const k = Store.cardKind(c);
+    const tipo = cardTipo(c);
+    const acoes =
+      '<div class="cc-actions">' +
+      '<button data-act="edit-card" data-id="' + c.id + '" aria-label="Editar">✏️</button>' +
+      '<button data-act="del-card" data-id="' + c.id + '" aria-label="Excluir">🗑️</button>' +
+      "</div>";
+    const abrir =
+      '<div class="cc" style="background:linear-gradient(135deg,' + cor + "," + shade(cor) + ')">' +
+      acoes +
+      '<div class="cc-badge">' + tipo.ico + " " + esc(tipo.nome) + "</div>";
+
+    /* ---------- VALE (VR/VA): saldo do crédito depositado no mês ---------- */
+    if (k === "vale") {
+      const v = Store.valeSaldo(c.id, mk);
+      return (
+        abrir +
+        '<div class="nm">' + esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</div>" +
+        '<div class="inv"><small>Saldo de ' + esc(monthLabel(mk)) + "</small>" + fmt(v.saldo) + "</div>" +
+        '<div class="bar"><i style="width:' + v.pct + '%"></i></div>' +
+        '<div class="bar-lbl">' +
+        (v.credito
+          ? "Usou " + fmt(v.usado) + " de " + fmt(v.credito) + " de crédito · " + v.pct + "%"
+          : "Usou " + fmt(v.usado) + " neste mês") +
+        "</div>" +
+        '<div class="meta">' +
+        "<div>Crédito<b>" + fmt(v.credito) + "</b></div>" +
+        "<div>Gasto no mês<b>" + fmt(v.usado) + "</b></div>" +
+        "<div>Entrada<b>" + (v.lancado ? fmt(v.lancado) : "—") + "</b></div>" +
+        "</div>" +
+        (v.credito > 0
+          ? v.lancado > 0
+            ? '<div class="bar-lbl">✅ Crédito de ' + esc(monthLabel(mk)) +
+              " já lançado como ↑ Entrada</div>"
+            : '<button class="cc-btn" data-act="vale-credito" data-id="' + c.id + '">📥 Lançar crédito do mês (' +
+              fmt(v.credito) + ")</button>"
+          : '<div class="bar-lbl">Sem crédito mensal cadastrado — edite para informar</div>') +
+        "</div>"
+      );
+    }
+
+    /* ---------- EMPRÉSTIMO / FINANCIAMENTO: quanto falta da dívida ---------- */
+    if (k === "emprestimo") {
+      const e = Store.emprestimoInfo(c.id);
+      return (
+        abrir +
+        '<div class="nm">' + esc(c.name) + "</div>" +
+        '<div class="num" style="letter-spacing:0">' +
+        e.parcelas + "x de " + fmt(e.valorParcela) + "</div>" +
+        '<div class="inv"><small>Falta pagar</small>' + fmt(e.falta) + "</div>" +
+        '<div class="bar"><i style="width:' + e.pct + '%"></i></div>' +
+        '<div class="bar-lbl">Pago ' + fmt(e.pago) + " de " + fmt(e.total) + " · " + e.pct + "%</div>" +
+        '<div class="meta">' +
+        "<div>Restam<b>" + e.restam + " de " + e.parcelas + "</b></div>" +
+        "<div>Vence dia<b>" + String(Number(c.due) || 10).padStart(2, "0") + "</b></div>" +
+        (e.taxa
+          ? "<div>Taxa<b>" + e.taxa + "% a.m.</b></div>"
+          : "<div>Liberado<b>" + fmt(Number(c.liberado) || 0) + "</b></div>") +
+        "</div>" +
+        (e.proxima
+          ? '<div class="bar-lbl">Próxima parcela: ' + fmt(e.proxima.amount) +
+            " em " + esc(fullDate(e.proxima.date)) + "</div>"
+          : '<div class="bar-lbl">✅ Todas as parcelas já venceram</div>') +
+        "</div>"
+      );
+    }
+
+    /* ---------- CRÉDITO (padrão) ---------- */
     const inv = Store.cardInvoice(c.id, mk);
     const used = Store.cardUsed(c.id);
     const pct = c.limit > 0 ? Math.min(100, Math.round((used / c.limit) * 100)) : 0;
@@ -759,15 +900,9 @@
     const [y, m] = mk.split("-").map(Number);
     const dClose = new Date(y, m - 1, Math.min(Number(c.closing) || 1, 28));
     const dDue = new Date(y, m - 1, Math.min(Number(c.due) || 1, 28));
-    /* cor do cartão: usa a salva ou a padrão (protege dados antigos/importados) */
-    const cor = /^#[0-9a-f]{6}$/i.test(c.color || "") ? c.color : CARD_COLORS[0];
 
     return (
-      '<div class="cc" style="background:linear-gradient(135deg,' + cor + "," + shade(cor) + ')">' +
-      '<div class="cc-actions">' +
-      '<button data-act="edit-card" data-id="' + c.id + '" aria-label="Editar">✏️</button>' +
-      '<button data-act="del-card" data-id="' + c.id + '" aria-label="Excluir">🗑️</button>' +
-      "</div>" +
+      abrir +
       '<div class="nm">' + esc(c.name) + "</div>" +
       '<div class="num">' + (c.final ? "•••• " + esc(c.final) : "••••") + "</div>" +
       '<div class="inv"><small>Fatura de ' + esc(monthLabel(mk)) + "</small>" + fmt(inv.total) + "</div>" +
@@ -883,15 +1018,18 @@
     }
 
     const qr = state.qr;
-    const cards = Store.cards();
+    /* parcela só existe em cartão de crédito — com p>1 o vale fica de fora */
+    const cards =
+      qr.p > 1
+        ? Store.cards().filter((c) => Store.cardKind(c) === "credito")
+        : pagaveis();
     const precisaCartao = qr.p > 1 && cards.length > 0;
     const cardOpts =
       '<option value="">— sem cartão —</option>' +
       cards
         .map(
           (c) =>
-            '<option value="' + c.id + '">' + esc(c.name) +
-            (c.final ? " •" + esc(c.final) : "") + "</option>"
+            '<option value="' + c.id + '">' + esc(cardLabel(c)) + "</option>"
         )
         .join("");
 
@@ -1718,7 +1856,7 @@
     const type = t ? t.type : "out";
     const dest = t ? (t.cardId ? "card:" + t.cardId : "acc:" + (t.accId || "")) : "";
     const accounts = Store.accounts();
-    const cards = Store.cards();
+    const cards = pagaveis();
 
     /* marca o destino ORIGINAL ao editar — sem isso o select voltava para a
        1ª conta e o "Salvar" trocava o cartão da parcela por uma conta */
@@ -1733,12 +1871,12 @@
         .join("") +
       "</optgroup>" +
       (cards.length
-        ? '<optgroup label="Cartões de crédito">' +
+        ? '<optgroup label="Cartões e vales">' +
           cards
             .map(
               (c) =>
                 '<option value="card:' + c.id + '"' + (dest === "card:" + c.id ? " selected" : "") + ">" +
-                esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</option>"
+                esc(cardLabel(c)) + "</option>"
             )
             .join("") +
           "</optgroup>"
@@ -1803,9 +1941,14 @@
     if (!form) return;
     const tipo = form.querySelector('[name="type"]:checked');
     const saida = !tipo || tipo.value === "out";
-    let noCartao = false;
-    if (form.dest) noCartao = String(form.dest.value || "").indexOf("card:") === 0;
-    else if (form.cardId) noCartao = !!form.cardId.value;
+    /* parcelas só em cartão de CRÉDITO — vale (VR/VA) é à vista e
+       empréstimo nem entra como destino de pagamento */
+    let cardId = null;
+    if (form.dest && String(form.dest.value || "").indexOf("card:") === 0)
+      cardId = form.dest.value.slice(5);
+    else if (form.cardId) cardId = form.cardId.value || null;
+    const cSel = cardId ? Store.card(cardId) : null;
+    const noCartao = !!cSel && Store.cardKind(cSel) === "credito";
     const n = Number(form.installments ? form.installments.value : 1) || 1;
     const verParc = noCartao && saida;
     const parc = $("#parcField", form);
@@ -1916,24 +2059,114 @@
     );
   }
 
+  /* só os campos do tipo escolhido ficam visíveis (crédito · vale · empréstimo) */
+  function syncCardForm(form) {
+    if (!form || !form.kind) return;
+    const k = form.kind.value;
+    const mostra = (id, on) => {
+      const el = $("#" + id, form);
+      if (el) el.hidden = !on;
+    };
+    mostra("fCredito", k === "credito");
+    mostra("fVale", k === "vale");
+    mostra("fEmp", k === "emprestimo");
+    mostra("fAcc", k !== "vale");
+    const titulo = $("#cardTitle");
+    if (titulo) {
+      const rotulo = k === "vale" ? "vale" : k === "emprestimo" ? "empréstimo" : "cartão";
+      titulo.textContent = (form.dataset.id ? "Editar " : "Novo ") + rotulo;
+    }
+  }
+
   function cardSheet(id) {
     const c = id ? Store.card(id) : null;
     const color = c ? c.color : CARD_COLORS[0];
-    openSheet(
-      "<h2>" + (c ? "Editar cartão" : "Novo cartão") + "</h2>" +
-      '<form data-form="card" data-id="' + (c ? c.id : "") + '">' +
-      '<div class="field"><label>Nome do cartão</label><input name="name" placeholder="Ex.: Nubank, Itaú..." value="' +
-      esc(c ? c.name : "") + '" required></div>' +
+    const k = Store.cardKind(c);
+    const ehNovo = !c;
+    const tipoSel =
+      '<div class="field"><label>Tipo</label><select name="kind">' +
+      '<option value="credito"' + (k === "credito" ? " selected" : "") + ">💳 Cartão de crédito</option>" +
+      '<option value="vale"' + (k === "vale" ? " selected" : "") + ">🍽️ Vale — VR / VA</option>" +
+      '<option value="emprestimo"' + (k === "emprestimo" ? " selected" : "") + ">🏦 Empréstimo ou financiamento</option>" +
+      "</select>" +
+      '<div class="hint">Crédito tem fatura, vale tem saldo mensal e empréstimo mostra o que falta pagar.</div></div>';
+
+    /* ---------- CRÉDITO (padrão) ---------- */
+    const fCredito =
+      '<div id="fCredito">' +
       '<div class="row2">' +
-      '<div class="field"><label>Final (4 dígitos)</label><input name="final" inputmode="numeric" maxlength="4" placeholder="1234" value="' + esc(c ? c.final : "") + '"></div>' +
+      '<div class="field"><label>Final (4 dígitos)</label><input name="final" inputmode="numeric" maxlength="4" placeholder="1234" value="' +
+      esc(c ? c.final : "") + '"></div>' +
       '<div class="field"><label>Limite total</label><input name="limit" inputmode="decimal" placeholder="Opcional" value="' +
       (c && c.limit ? (c.limit / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") + '"></div>' +
       "</div>" +
       '<div class="row2">' +
       '<div class="field"><label>Dia do fechamento</label><input name="closing" type="number" min="1" max="31" value="' + (c ? c.closing : 1) + '"></div>' +
       '<div class="field"><label>Dia do vencimento</label><input name="due" type="number" min="1" max="31" value="' + (c ? c.due : 10) + '"></div>' +
+      "</div></div>";
+
+    /* ---------- VALE (VR/VA) ---------- */
+    const fVale =
+      '<div id="fVale">' +
+      '<div class="row2">' +
+      '<div class="field"><label>Qual vale</label><select name="sub">' +
+      '<option value="vr"' + ((c && c.sub === "va") ? "" : " selected") + ">🍽️ VR — refeição</option>" +
+      '<option value="va"' + ((c && c.sub === "va") ? " selected" : "") + ">🛒 VA — alimentação</option>" +
+      "</select></div>" +
+      '<div class="field"><label>Crédito mensal</label><input name="credito" inputmode="decimal" placeholder="Ex.: 1100" value="' +
+      (c && c.credito ? (c.credito / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") + '"></div>' +
       "</div>" +
-      (Store.accounts().length > 1 ? cardAccRow(c) : "") +
+      '<div class="hint">O que a empresa deposita todo mês. Vale não tem fechamento nem parcela — é à vista. ' +
+      "Dá para lançar esse crédito como ↑ Entrada direto do cartão.</div>" +
+      "</div>";
+
+    /* ---------- EMPRÉSTIMO / FINANCIAMENTO ---------- */
+    const fEmp =
+      '<div id="fEmp">' +
+      '<div class="row2">' +
+      '<div class="field"><label>Qual tipo</label><select name="subEmp">' +
+      '<option value="emp"' + ((c && c.sub === "fin") ? "" : " selected") + ">🏦 Empréstimo bancário</option>" +
+      '<option value="fin"' + ((c && c.sub === "fin") ? " selected" : "") + ">🏠 Financiamento</option>" +
+      "</select></div>" +
+      '<div class="field"><label>Valor liberado</label><input name="liberado" inputmode="decimal" placeholder="Ex.: 10000" value="' +
+      (c && c.liberado ? (c.liberado / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") + '"></div>' +
+      "</div>" +
+      '<div class="row2">' +
+      '<div class="field"><label>Nº de parcelas</label><input name="parcelas" type="number" min="1" max="600" value="' +
+      (c && c.parcelas ? c.parcelas : 12) + '"></div>' +
+      '<div class="field"><label>Valor da parcela</label><input name="valorParcela" inputmode="decimal" placeholder="Ex.: 350,90" value="' +
+      (c && c.valorParcela ? (c.valorParcela / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") + '"></div>' +
+      "</div>" +
+      '<div class="row2">' +
+      '<div class="field"><label>Dia do vencimento</label><input name="dueEmp" type="number" min="1" max="31" value="' + (c ? c.due : 10) + '"></div>' +
+      '<div class="field"><label>Taxa % ao mês</label><input name="taxa" inputmode="decimal" placeholder="Opcional" value="' +
+      (c && c.taxa ? String(c.taxa) : "") + '"></div>' +
+      "</div>" +
+      (ehNovo
+        ? '<div class="row2">' +
+          '<div class="field"><label>Parcelas já pagas</label><input name="pagas" type="number" min="0" max="599" value="0">' +
+          '<div class="hint">Financiamento antigo? Informe quantas já foram quitadas.</div></div>' +
+          '<div class="field"><label>Lançar o valor recebido como ↑ Entrada?</label>' +
+          '<div class="seg seg-entrada">' +
+          '<label class="s-in"><input type="radio" name="entra" value="sim" checked><span>Sim</span></label>' +
+          '<label class="s-out"><input type="radio" name="entra" value="nao"><span>Não</span></label>' +
+          "</div>" +
+          '<div class="hint">Deixe em «Não» se esse dinheiro já entrou no Saldo inicial.</div></div>' +
+          "</div>"
+        : '<div class="hint">Ao editar, as parcelas já criadas não mudam — só o que fica no rosto do cartão.</div>') +
+      "</div>";
+
+    openSheet(
+      '<h2 id="cardTitle">' + (c ? "Editar " : "Novo ") +
+      (k === "vale" ? "vale" : k === "emprestimo" ? "empréstimo" : "cartão") + "</h2>" +
+      '<form data-form="card" data-id="' + (c ? c.id : "") + '">' +
+      '<div class="field"><label>Nome</label><input name="name" placeholder="Ex.: Nubank, VR da empresa, Financiamento do carro..." value="' +
+      esc(c ? c.name : "") + '" required></div>' +
+      tipoSel +
+      fCredito +
+      fVale +
+      fEmp +
+      '<div id="fAcc">' + (Store.accounts().length > 1 ? cardAccRow(c) : "") + "</div>" +
       '<div class="field"><label>Cor</label><div class="tag-list" id="colorList">' +
       CARD_COLORS.map(
         (col) =>
@@ -1947,6 +2180,7 @@
       '<button class="btn" type="submit">' + (c ? "Salvar" : "Cadastrar") + "</button>" +
       "</div></form>"
     );
+    syncCardForm($("#modal-root form"));
   }
 
   /* =====================================================================
@@ -1954,14 +2188,14 @@
      ===================================================================== */
   function thirdSheet(id) {
     const t = id ? Store.thirdItem(id) : null;
-    const cards = Store.cards();
+    const cards = pagaveis();
     const cardOpts =
       '<option value="">— sem cartão —</option>' +
       cards
         .map(
           (c) =>
             '<option value="' + c.id + '"' + (t && t.cardId === c.id ? " selected" : "") + ">" +
-            esc(c.name) + (c.final ? " •" + esc(c.final) : "") + "</option>"
+            esc(cardLabel(c)) + "</option>"
         )
         .join("");
 
@@ -2934,6 +3168,30 @@
         () => { Store.removeCard(c.id); closeSheet(); render(); toast("Cartão excluído"); }
       );
     },
+    /* vale (VR/VA): transforma o crédito do mês em ↑ Entrada para o
+       Caixa fechar — o dinheiro do vale é dinheiro de verdade */
+    "vale-credito"(el) {
+      const c = Store.card(el.dataset.id);
+      if (!c) return;
+      const mk = state.month;
+      const v = Store.valeSaldo(c.id, mk);
+      if (!v || !(v.credito > 0)) return toast("Informe o crédito mensal do vale (✏️ editar)");
+      if (v.lancado > 0) return toast("O crédito de " + monthLabel(mk) + " já foi lançado");
+      /* se estiver olhando o mês de agora, marca o dia de hoje; num mês
+         antigo/futuro fica no dia 1 (serve só para agrupar no relatório) */
+      const agora = monthKey(today());
+      Store.addTx({
+        type: "in",
+        amount: v.credito,
+        date: mk === agora ? today() : mk + "-01",
+        catId: "in_vale",
+        accId: null,
+        cardId: c.id,
+        note: (c.sub === "va" ? "VA" : "VR") + " · " + c.name + " — crédito de " + monthLabel(mk)
+      });
+      toast("↑ " + fmt(v.credito) + " lançados como crédito de " + monthLabel(mk));
+      render();
+    },
 
     "new-third"() { thirdSheet(null); },
     "edit-third"(el) { thirdSheet(el.dataset.id); },
@@ -3143,6 +3401,9 @@
       syncParcelas(e.target.closest("form"));
       syncFatura(e.target.closest("form"));
     }
+    /* cadastro de cartão: trocar o tipo mostra só os campos dele */
+    if (e.target.name === "kind" && e.target.form && e.target.form.dataset.form === "card")
+      syncCardForm(e.target.form);
     if (e.target.name === "modo") syncMove(e.target.closest("form"));
     /* menu de visão da tela de Terceiros (mês · resumo geral · pessoa) */
     if (e.target.name === "tdview") {
@@ -3357,14 +3618,17 @@
       Store.updateTx(id, base);
       toast("Lançamento atualizado");
     } else {
+      /* parcela é coisa de cartão de CRÉDITO — vale (VR/VA) é à vista */
+      const cSel = isCard ? Store.card(base.cardId) : null;
+      const podeParcelar = !!cSel && Store.cardKind(cSel) === "credito";
       const total =
-        isCard && base.type === "out" ? Math.max(1, Number(fd.get("installments")) || 1) : 1;
+        podeParcelar && base.type === "out" ? Math.max(1, Number(fd.get("installments")) || 1) : 1;
       const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
       /* v1.9.2: no cartão a compra nasce na fatura certa — a 1ª parcela é
          datada do vencimento do ciclo em que a compra caiu (fecha >= data
          da compra), e as parcelas já pagas avançam os meses delas */
       let naFatura = false;
-      if (isCard && base.type === "out") {
+      if (podeParcelar && base.type === "out") {
         const ciclo = Store.cicloFatura(base.cardId, base.date);
         if (ciclo && ciclo.vence !== base.date) {
           base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
@@ -3417,25 +3681,120 @@
     return null;
   }
 
+  /* primeiro dia `dia` de hoje em diante — é daí que as parcelas de um
+     empréstimo passam a contar (se o dia deste mês já passou, cai no
+     próximo). Usa data local para não pular o dia por causa do fuso. */
+  function isoLocal(dt) {
+    return (
+      dt.getFullYear() +
+      "-" + String(dt.getMonth() + 1).padStart(2, "0") +
+      "-" + String(dt.getDate()).padStart(2, "0")
+    );
+  }
+  function proximoVenc(dia) {
+    const d = Math.min(31, Math.max(1, Number(dia) || 10));
+    const hj = new Date();
+    const y = hj.getFullYear();
+    const m = hj.getMonth();
+    const hoje = new Date(y, m, hj.getDate());
+    const neste = new Date(y, m, Math.min(d, new Date(y, m + 1, 0).getDate()));
+    if (neste >= hoje) return isoLocal(neste);
+    return isoLocal(new Date(y, m + 1, Math.min(d, new Date(y, m + 2, 0).getDate())));
+  }
+
   function saveCard(form, fd) {
+    const kind = String(fd.get("kind") || "credito");
     const name = String(fd.get("name") || "").trim();
-    if (!name) return toast("Informe o nome do cartão");
-    const patch = {
-      name,
-      final: String(fd.get("final") || "").replace(/\D/g, "").slice(0, 4),
-      limit: parseMoney(fd.get("limit")),
-      closing: Math.min(31, Math.max(1, Number(fd.get("closing")) || 1)),
-      due: Math.min(31, Math.max(1, Number(fd.get("due")) || 10)),
-      color: fd.get("color") || CARD_COLORS[0]
-    };
-    if (form.querySelector('[name="accId"]')) patch.accId = fd.get("accId") || null;
+    if (!name)
+      return toast(kind === "emprestimo" ? "Informe o nome (ex.: Financiamento do carro)" : "Informe o nome do cartão");
+
+    const patch = { kind, name, color: fd.get("color") || CARD_COLORS[0] };
+    let pagas = 0;
+    let comEntrada = false;
+
+    if (kind === "vale") {
+      patch.sub = fd.get("sub") === "va" ? "va" : "vr";
+      patch.credito = parseMoney(fd.get("credito"));
+      patch.limit = 0;
+      patch.closing = 1;
+      patch.due = 1;
+    } else if (kind === "emprestimo") {
+      patch.sub = fd.get("subEmp") === "fin" ? "fin" : "emp";
+      patch.liberado = parseMoney(fd.get("liberado"));
+      patch.parcelas = Math.min(600, Math.max(1, Math.floor(Number(fd.get("parcelas")) || 1)));
+      patch.valorParcela = parseMoney(fd.get("valorParcela"));
+      patch.taxa = Math.max(0, Number(fd.get("taxa")) || 0);
+      patch.due = Math.min(31, Math.max(1, Number(fd.get("dueEmp")) || 10));
+      patch.closing = 1; /* não existe fechamento em empréstimo */
+      patch.limit = 0;
+      patch.final = "";
+      if (form.querySelector('[name="accId"]')) patch.accId = fd.get("accId") || null;
+      if (patch.valorParcela <= 0) return toast("Informe o valor de cada parcela");
+      if (!form.dataset.id) {
+        pagas = Math.max(0, Math.floor(Number(fd.get("pagas")) || 0));
+        if (pagas >= patch.parcelas)
+          return toast("As parcelas já pagas precisa ser menor que o total");
+        comEntrada = fd.get("entra") === "sim";
+        if (comEntrada && !(patch.liberado > 0))
+          return toast("Informe o valor liberado — ou escolha «Não» na entrada");
+      }
+    } else {
+      patch.final = String(fd.get("final") || "").replace(/\D/g, "").slice(0, 4);
+      patch.limit = parseMoney(fd.get("limit"));
+      patch.closing = Math.min(31, Math.max(1, Number(fd.get("closing")) || 1));
+      patch.due = Math.min(31, Math.max(1, Number(fd.get("due")) || 10));
+      if (form.querySelector('[name="accId"]')) patch.accId = fd.get("accId") || null;
+    }
+
     if (form.dataset.id) {
       Store.updateCard(form.dataset.id, patch);
-      toast("Cartão atualizado");
-    } else {
-      Store.addCard(patch);
-      toast("Cartão cadastrado");
+      toast(kind === "emprestimo" ? "Empréstimo atualizado" : "Cartão atualizado");
+      closeSheet();
+      render();
+      return;
     }
+
+    const item = Store.addCard(patch);
+    let recado = kind === "vale" ? "Vale cadastrado" : "Cartão cadastrado";
+
+    if (kind === "emprestimo") {
+      const restam = patch.parcelas - pagas;
+      if (restam > 0) {
+        /* primeira parcela que ainda VAI vencer, mês a mês até o fim */
+        Store.addInstallments(
+          {
+            type: "out",
+            amount: patch.valorParcela,
+            date: proximoVenc(patch.due),
+            catId: "out_emprestimo",
+            accId: null,
+            cardId: item.id,
+            note: patch.name
+          },
+          restam,
+          pagas + 1,
+          patch.parcelas,
+          null
+        );
+      }
+      if (comEntrada) {
+        Store.addTx({
+          type: "in",
+          amount: patch.liberado,
+          date: isoLocal(new Date()),
+          catId: "in_emprestimo",
+          accId: patch.accId || null,
+          cardId: null,
+          note: patch.name + " — valor liberado"
+        });
+      }
+      recado =
+        (patch.sub === "fin" ? "Financiamento" : "Empréstimo") +
+        ": " + restam + "x de " + fmt(patch.valorParcela) +
+        (comEntrada ? " · ↑ entrada lançada" : "");
+    }
+
+    toast(recado);
     closeSheet();
     render();
   }
@@ -3460,15 +3819,17 @@
       Store.updateThird(form.dataset.id, base);
       toast("Registro atualizado");
     } else {
-      /* mesma regra dos lançamentos: no cartão dá para parcelar,
-         dizendo quantas parcelas já foram pagas */
-      const total = base.cardId
+      /* mesma regra dos lançamentos: parcela só em cartão de crédito
+         (vale é à vista) — dizendo quantas já foram pagas */
+      const cSel = base.cardId ? Store.card(base.cardId) : null;
+      const podeParcelar = !!cSel && Store.cardKind(cSel) === "credito";
+      const total = podeParcelar
         ? Math.max(1, Number(fd.get("installments")) || 1)
         : 1;
       const pagas = Math.max(0, Math.floor(Number(fd.get("paid")) || 0));
       /* mesma regra do lançamento (v1.9.2): nasce no vencimento da fatura */
       let naFatura = false;
-      if (base.cardId) {
+      if (podeParcelar) {
         const ciclo = Store.cicloFatura(base.cardId, base.date);
         if (ciclo && ciclo.vence !== base.date) {
           base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
@@ -3729,6 +4090,8 @@
       const dHoje = new Date().getDate();
       const mk = today().slice(0, 7);
       const perto = Store.cards().filter((c) => {
+        /* vale (VR/VA) não vence — crédito é pré-pago */
+        if (Store.cardKind(c) === "vale") return false;
         const dias = (Number(c.due) || 10) - dHoje;
         return dias >= 0 && dias <= 3;
       });
@@ -3739,12 +4102,16 @@
           const c = perto[0];
           const dias = (Number(c.due) || 10) - dHoje;
           const inv = Store.cardInvoice(c.id, mk);
+          const emprestimo = Store.cardKind(c) === "emprestimo";
           const txt =
-            "Fatura " + c.name +
+            (emprestimo ? "Parcela de " : "Fatura ") + c.name +
               (dias === 0 ? " vence HOJE" : " vence em " + dias + " dia(s)") +
               (inv.total ? " · " + fmt(inv.total) : "");
-          notificar("💳 " + txt, "Abra o app para conferir a fatura.");
-          toast("💳 " + txt);
+          notificar(
+            (emprestimo ? "🏦 " : "💳 ") + txt,
+            emprestimo ? "Abra o app para conferir as parcelas." : "Abra o app para conferir a fatura."
+          );
+          toast((emprestimo ? "🏦 " : "💳 ") + txt);
         }
       }
     } catch (e) {}
