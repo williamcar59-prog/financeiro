@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.10.1";
+  const APP_VERSION = "1.11.0";
   const BUILD_DATE = "09/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -1789,8 +1789,63 @@
       '<div class="s"><span><b>Caixa ao fim do mês</b></span><b class="' + (Store.cashAt(cur) < 0 ? "r" : "g") + '">' + fmt(Store.cashAt(cur)) + "</b></div>" +
       '<div class="s"><span>Maior gasto</span><b>' + (biggest ? esc(catName(biggest.catId)) + " · " + fmt(biggest.amount) : "—") + "</b></div>" +
       '<div class="s"><span>Dívidas de terceiros</span><b>' + fmt(tdOpen) + "</b></div>" +
-      "</div>"
+      "</div>" +
+
+      /* v1.11.0 — o mesmo resumo em PDF, para guardar ou mandar pra alguém */
+      '<button class="btn ghost" data-act="pdf-mes" data-mes="' + cur + '" ' +
+      'style="margin-top:10px">📄 Baixar o relatório de ' + esc(monthLabel(cur)) +
+      " em PDF</button>"
     );
+  }
+
+  /* =====================================================================
+     RELATÓRIO DO MÊS EM PDF (v1.11.0)
+     Junta os números do mês e manda pro relatorio.js (jsPDF) desenhar.
+     ===================================================================== */
+  function baixarPDFMes(mk) {
+    try {
+      if (!window.RelatorioPDF)
+        return toast("O gerador de PDF não carregou — abra o app de novo");
+      const l = Store.txOfMonth(mk);
+      if (!l.length) return toast("Sem lançamentos em " + monthLabel(mk));
+
+      /* série dos 6 meses que terminam em mk (a mesma base do gráfico) */
+      const serie = [];
+      for (let i = 5; i >= 0; i--) {
+        const k = addMonths(mk, -i);
+        serie.push({
+          rot: MESES[Number(k.split("-")[1]) - 1].slice(0, 3),
+          in: Store.sumIn(Store.txOfMonth(k)),
+          out: Store.sumOut(Store.txOfMonth(k))
+        });
+      }
+      const outs = l.filter((t) => t.type === "out");
+      const ins = l.filter((t) => t.type === "in");
+      const maior = outs.slice().sort((a, b) => b.amount - a.amount)[0];
+      const br = (d) => String(d || "").split("-").reverse().join("/");
+
+      const doc = window.RelatorioPDF.gerar({
+        mesLabel: monthLabel(mk),
+        geradoEm: br(today()),
+        entradas: Store.sumIn(l),
+        saidas: Store.sumOut(l),
+        saldo: Store.balanceOf(mk),
+        caixa: Store.cashAt(mk),
+        mediaIn: Math.round(serie.reduce((s, d) => s + d.in, 0) / serie.length),
+        mediaOut: Math.round(serie.reduce((s, d) => s + d.out, 0) / serie.length),
+        maior: maior
+          ? { catNome: catName(maior.catId), amount: maior.amount, data: br(maior.date) }
+          : null,
+        nIn: ins.length,
+        nOut: outs.length,
+        versao: APP_VERSION
+      });
+      const nome = "relatorio-" + mk + ".pdf";
+      doc.save(nome);
+      toast("📄 Relatório de " + monthLabel(mk) + " salvo: " + nome);
+    } catch (e) {
+      toast("Não deu para gerar o PDF — tente de novo");
+    }
   }
 
   /* =====================================================================
@@ -3007,6 +3062,12 @@
 
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
+    /* v1.11.0 — PDF do mês: sai da tela de Relatórios ou do aviso da virada */
+    "pdf-mes"(el) {
+      const mk = (el && el.dataset.mes) || state.month;
+      if ($("#modal-root").innerHTML) closeSheet();
+      baixarPDFMes(mk);
+    },
     move() { moveSheet(); },
     "del-acc"(el) {
       const id = el.dataset.id;
@@ -4184,6 +4245,37 @@
           ),
         4200
       );
+    } catch (e) {}
+  })();
+
+  /* relatório do mês que fechou (v1.11.0): 1 aviso por mês, na primeira
+     abertura. Um site estático não roda em segundo plano — então o
+     "automático" aqui é: percebe que o mês virou e oferece o PDF pronto,
+     com um toque. Guarda o MÊS oferecido (não a data) pra não encher o saco. */
+  (function lembreteRelatorio() {
+    try {
+      if (location.protocol.indexOf("http") !== 0) return;
+      const anterior = addMonths(today().slice(0, 7), -1);
+      /* só faz sentido se houver o que contar no mês que fechou */
+      if (!Store.txOfMonth(anterior).length) return;
+      if (localStorage.getItem("fin_rel_ofertado") === anterior) return;
+      localStorage.setItem("fin_rel_ofertado", anterior);
+      setTimeout(() => {
+        /* trava na frente? sheet aberto? então deixa pra próxima abertura */
+        if (document.getElementById("lock")) return;
+        if ($("#modal-root").innerHTML) return;
+        openSheet(
+          '<h2>📅 Fechou ' + esc(monthLabel(anterior)) + "</h2>" +
+            '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' +
+            "Que tal guardar o relatório do mês em PDF? Sai o resumo: entradas, " +
+            "saídas, saldo, caixa e o maior gasto — tudo numa página só.</p>" +
+            '<div class="form-actions">' +
+            '<button class="btn" data-act="pdf-mes" data-mes="' + anterior + '">' +
+            "📄 Gerar o PDF</button> " +
+            '<button class="btn ghost" data-act="close-modal">Agora não</button>' +
+            "</div>"
+        );
+      }, 7000);
     } catch (e) {}
   })();
 

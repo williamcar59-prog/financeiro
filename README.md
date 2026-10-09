@@ -581,6 +581,26 @@ Corrigido em três camadas:
 > 🔎 Para conferir: ⚙️ Ajustes → Sair → *Esqueci minha senha* → abra o e-mail
 > e toque no link. Ele tem que abrir o app (não a página 404).
 
+### 📄 Relatório do mês em PDF (v1.11.0)
+
+Em **Relatórios** agora tem o botão **"📄 Baixar o relatório de outubro 2026
+em PDF"**: sai uma página só, com a mesma cara do app — entradas, saídas,
+saldo, caixa ao fim do mês, as barras dos últimos 6 meses, a média e o maior
+gasto. Dá para guardar, imprimir ou mandar pra alguém.
+
+- **Aviso quando o mês fecha**: na primeira abertura depois da virada, o app
+  pergunta *"📅 Fechou setembro 2026 — quer o PDF?"* (um toque e baixa). Ele
+  pergunta uma vez por mês; se você escolher "Agora não", o botão continua
+  esperando em Relatórios.
+- **Qualquer mês**: use as setinhas ‹ › para escolher o mês e baixar o PDF
+  dele também.
+- **Tudo aqui dentro**: o PDF é desenhado no próprio aparelho (jsPDF, guardado
+  junto com o app), funciona offline e os dados não passam por lugar nenhum.
+- O arquivo sai como `relatorio-2026-10.pdf` (ano-mês).
+
+> 🔎 Para conferir: abra **Relatórios** → toque no botão do PDF → o arquivo
+> baixa e aparece o aviso "📄 Relatório de outubro 2026 salvo".
+
 ### 📈 Onde entrou o dinheiro (Relatórios)
 
 Novo bloco em **Relatórios** com as entradas do mês por categoria e o %

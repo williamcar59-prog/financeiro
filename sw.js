@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.10.1";
+const VERSION = "1.11.0";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",
@@ -16,7 +16,10 @@ const ASSETS = [
   "./app.js",
   /* página pública do terceiro + gerador de QR (v1.9.0) */
   "./terceiro.html",
-  "./qrcode.js"
+  "./qrcode.js",
+  /* PDF do mês: jsPDF + o desenho do relatório (v1.11.0) */
+  "./jspdf.umd.min.js",
+  "./relatorio.js"
 ];
 
 self.addEventListener("install", (e) => {
