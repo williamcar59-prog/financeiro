@@ -1162,7 +1162,12 @@
       const j = await supa("/auth/v1/signup", {
         method: "POST",
         auth: false,
-        body: JSON.stringify({ email: email, password: pass })
+        body: JSON.stringify({
+          email: email,
+          password: pass,
+          /* link de confirmação do cadastro também volta para este app */
+          email_redirect_to: location.origin + location.pathname
+        })
       });
       if (!j || !j.access_token)
         throw new Error("Confirme o link enviado ao seu e-mail");
@@ -1179,7 +1184,23 @@
       await supa("/auth/v1/recover", {
         method: "POST",
         auth: false,
-        body: JSON.stringify({ email: email })
+        body: JSON.stringify({
+          email: email,
+          /* SEM isto o Supabase usa a "Site URL" do painel (que está na raiz
+             do github.io, onde não existe site) e o link do e-mail caía num
+             404 do GitHub Pages. Aqui o destino é sempre ESTE app. */
+          redirect_to: location.origin + location.pathname
+        })
+      });
+      return true;
+    },
+
+    /* troca a senha depois que o link de recuperação foi aceito */
+    async setPassword(nova) {
+      await sessaoViva();
+      await supa("/auth/v1/user", {
+        method: "PUT",
+        body: JSON.stringify({ password: nova })
       });
       return true;
     },
@@ -1231,6 +1252,15 @@
       const qp = new URLSearchParams(busca);
       const code = qp.get("code");
       let sessao = null;
+      /* link expirado/inválido: o Supabase devolve #error=… e nada de token.
+         Antes o app só mostrava a tela de login sem explicar nada. */
+      if (!hp.get("access_token") && !code && hp.get("error")) {
+        const cod = String(hp.get("error_code") || hp.get("error") || "");
+        try {
+          history.replaceState(null, "", location.pathname);
+        } catch (e) {}
+        return /expired|otp|invalid/i.test(cod) ? "expirado" : "erro";
+      }
       if (hp.get("access_token")) {
         sessao = normSession({
           access_token: hp.get("access_token"),
@@ -1257,11 +1287,13 @@
         localStorage.removeItem(PKCE_KEY);
       } catch (e) {}
       if (!sessao || !sessao.user_id) throw new Error("Falha ao entrar");
+      const recuperando = hp.get("type") === "recovery";
       saveSession(sessao);
       db = null;
       Store.init();
       history.replaceState(null, "", location.pathname + "#home");
-      return true;
+      /* "recovery": veio do link de recuperação → falta escolher a senha nova */
+      return recuperando ? "recovery" : true;
     },
 
     async signOut() {

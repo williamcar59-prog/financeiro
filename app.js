@@ -8,8 +8,8 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.10.0";
-  const BUILD_DATE = "08/10/2026"; /* data da publicação */
+  const APP_VERSION = "1.10.1";
+  const BUILD_DATE = "09/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
@@ -2623,6 +2623,28 @@
     if (msg && err) err.textContent = msg;
   }
 
+  /* link de recuperação aberto → o app pede a senha nova (antes o link só
+     entrava na conta e a senha continuava a mesma, sem tela nenhuma) */
+  function novaSenhaSheet() {
+    openSheet(
+      '<h2>🔒 Defina sua nova senha</h2>' +
+        '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' +
+        "O link do e-mail foi aceito. Agora escolha uma senha nova " +
+        "(mínimo de 6 caracteres) para a sua conta.</p>" +
+        '<form data-form="nova-senha">' +
+        '<div class="field"><label>Nova senha</label>' +
+        '<input type="password" name="p1" minlength="6" autocomplete="new-password" ' +
+        'placeholder="••••••" required></div>' +
+        '<div class="field"><label>Repita a nova senha</label>' +
+        '<input type="password" name="p2" minlength="6" autocomplete="new-password" ' +
+        'placeholder="••••••" required></div>' +
+        '<div class="login-err" id="novaSenhaErr" role="alert"></div>' +
+        '<div class="form-actions"><button class="btn" type="submit">' +
+        "Salvar nova senha</button></div>" +
+        "</form>"
+    );
+  }
+
   /* traduz os erros do serviço em português */
   function erroLogin(e) {
     const m = String((e && e.message) || e || "");
@@ -3466,6 +3488,25 @@
     const fd = new FormData(form);
 
     if (kind === "login") return entrarComForm(form, fd, e);
+    if (kind === "nova-senha") {
+      const p1 = String(fd.get("p1") || "");
+      const p2 = String(fd.get("p2") || "");
+      const err = document.getElementById("novaSenhaErr");
+      const falha = (m) => {
+        if (err) err.textContent = m;
+      };
+      if (p1.length < 6) return falha("A senha precisa de pelo menos 6 caracteres");
+      if (p1 !== p2) return falha("As duas senhas não batem");
+      if (err) err.textContent = "Salvando…";
+      Store.auth.setPassword(p1)
+        .then(() => {
+          closeSheet();
+          render();
+          toast("Senha alterada ✓ use a nova da próxima vez");
+        })
+        .catch((e) => falha(erroLogin(e)));
+      return;
+    }
     if (kind === "tx") return saveTx(form, fd);
     if (kind === "card") return saveCard(form, fd);
     if (kind === "third") return saveThird(form, fd);
@@ -4161,11 +4202,23 @@
     mostrarLogin("Sua sessão expirou — entre de novo");
   });
 
-  /* veio do Google com os tokens? limpa a URL. Sem conta: tela de login. */
+  /* veio do Google com os tokens? limpa a URL. Sem conta: tela de login.
+     r pode ser: true (normal) · "recovery" (link da recuperação) ·
+     "expirado"/"erro" (link vencido) · false (nada na URL) */
   Store.auth.consumeRedirect()
-    .then(() => {
-      if (Store.auth.session()) iniciarApp();
-      else mostrarLogin();
+    .then((r) => {
+      const aviso =
+        r === "expirado"
+          ? "⏰ O link de recuperação expirou — peça outro"
+          : r === "erro"
+          ? "⚠️ Não deu pra usar esse link — peça outro"
+          : null;
+      const logado = !!Store.auth.session();
+      if (logado) iniciarApp();
+      else mostrarLogin(aviso || undefined);
+      if (aviso && logado) toast(aviso);
+      /* link da recuperação aceito: hora de escolher a senha nova */
+      if (r === "recovery") setTimeout(novaSenhaSheet, 350);
     })
     .catch((e) => {
       console.error("Login Google:", e);

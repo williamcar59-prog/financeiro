@@ -556,6 +556,28 @@ campo **Tipo**):
 - **QR/link do terceiro**: continua sem cartão dentro — só valor, parcelas e
   data.
 
+### 🔑 Recuperar a senha (v1.10.1)
+
+O "Esqueci minha senha" mandava o e-mail, mas **o link do e-mail dava 404**
+(página do GitHub Pages): sem destino informado, o Supabase usava a Site URL
+do painel, que aponta para a raiz do `github.io` — onde não existe site.
+Corrigido em três camadas:
+
+- **O e-mail agora volta para o app**: `recover()` manda
+  `redirect_to = endereço atual` e a confirmação de cadastro ganhou
+  `email_redirect_to` (tinha o mesmo defeito).
+- **Nova janela "🔒 Defina sua nova senha"**: o link agora abre o app e
+  mostra os campos *Nova senha* + *Repita* (mín. 6 caracteres) — **antes não
+  existia tela para trocar a senha**, então o link entrava na conta e nada
+  mudava. Acertou, entra no app com a senha nova.
+- **Link vencido fala o que houve**: `⏰ O link de recuperação expirou —
+  peça outro` em vez de deixar você na tela de login sem explicação.
+- **`404.html`**: endereço errado sob o projeto devolve para o app em vez da
+  página padrão do GitHub.
+
+> 🔎 Para conferir: ⚙️ Ajustes → Sair → *Esqueci minha senha* → abra o e-mail
+> e toque no link. Ele tem que abrir o app (não a página 404).
+
 ### 📈 Onde entrou o dinheiro (Relatórios)
 
 Novo bloco em **Relatórios** com as entradas do mês por categoria e o %

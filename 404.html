@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Página não encontrada · Minha Vida Financeira</title>
+<style>
+  html,body{height:100%}
+  body{
+    margin:0;display:flex;align-items:center;justify-content:center;
+    background:#f4f7fb;color:#1b2430;
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    text-align:center;padding:24px;
+  }
+  .caixa{max-width:420px}
+  .ico{font-size:54px;line-height:1}
+  h1{font-size:22px;margin:14px 0 8px}
+  p{color:#5a6675;margin:0 0 18px;font-size:15px}
+  .btn{
+    display:inline-block;background:#2563eb;color:#fff;text-decoration:none;
+    font-weight:700;border-radius:12px;padding:12px 22px;font-size:15px;
+  }
+  .btn:active{background:#1d4ed8}
+</style>
+</head>
+<body>
+  <div class="caixa">
+    <div class="ico">🧭</div>
+    <h1>Página não encontrada</h1>
+    <p>Este endereço não existe — mas o seu app está aqui embaixo,
+       voltando para ele agora…</p>
+    <a class="btn" id="volta" href="./">Ir para o app</a>
+  </div>
+  <script>
+    /* O GitHub Pages serve esta página para qualquer caminho inexistente do
+       projeto (não existe "SPA fallback"). Aqui a gente devolve a pessoa para
+       a raiz do app: o 1º segmento do endereço é o repositório (…/financeiro/…).
+       O "if" evita laço infinito quando o caminho JÁ é a raiz. */
+    (function () {
+      var seg = location.pathname.split("/")[1];
+      var alvo = "/" + (seg || "") + "/";
+      if (seg && location.pathname !== alvo) {
+        document.getElementById("volta").href = alvo;
+        location.replace(alvo);
+      }
+    })();
+  </script>
+</body>
+</html>
