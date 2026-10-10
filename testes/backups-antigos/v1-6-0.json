@@ -1,0 +1,35 @@
+{
+  "_comentario": "Backup sintético no formato da v1.6.0 — tem cartões (ainda SEM campo 'kind', que só chegou na v1.10) e terceiros no esquema antigo: who (não person), desc (não note), value (não amount) e paid booleano (não status).",
+  "version": "1.6.0",
+  "createdAt": "2026-09-14T12:00:00.000Z",
+  "accounts": [
+    { "id": "acc_v6_1", "type": "bank", "name": "Banco", "opening": 120000 },
+    { "id": "acc_v6_2", "type": "cash", "name": "Dinheiro", "opening": 3000 }
+  ],
+  "cards": [
+    {
+      "id": "card_v6_1",
+      "name": "Nubank",
+      "final": "1234",
+      "limit": 800000,
+      "closing": 3,
+      "due": 10,
+      "accId": "acc_v6_1"
+    }
+  ],
+  "transactions": [
+    { "id": "tx_v6_1", "type": "in",  "value": 320000, "date": "2026-09-05", "catId": "in_salario",     "desc": "Salário (setembro)", "accId": "acc_v6_1" },
+    { "id": "tx_v6_2", "type": "out", "value": 95000,  "date": "2026-09-10", "catId": "out_moradia",    "desc": "Aluguel",            "accId": "acc_v6_1" },
+    { "id": "tx_v6_3", "type": "out", "value": 62340,  "date": "2026-09-07", "catId": "out_alimentacao","desc": "Mercado",            "cardId": "card_v6_1" },
+    { "id": "tx_v6_4", "type": "out", "value": 15000,  "date": "2026-09-20", "catId": "out_compras",    "desc": "Geladeira parcelada","cardId": "card_v6_1",
+      "group": { "gid": "g_v6_1", "n": 1, "total": 12 } },
+    { "id": "tx_v6_5", "type": "out", "value": 15000,  "date": "2026-10-20", "catId": "out_compras",    "desc": "Geladeira parcelada","cardId": "card_v6_1",
+      "group": { "gid": "g_v6_1", "n": 2, "total": 12 } }
+  ],
+  "third": [
+    { "id": "td_v6_1", "who": "João",       "value": 45000, "date": "2026-09-09", "desc": "Jantar",         "cardId": "card_v6_1", "paid": false },
+    { "id": "td_v6_2", "who": "Maria",      "value": 12500, "date": "2026-09-21", "desc": "Presente",       "cardId": "card_v6_1", "paid": true },
+    { "id": "td_v6_3", "who": "Padaria do Zé","value": 3200,"date": "2026-09-25", "desc": "Fiado",          "cardId": null,        "paid": false }
+  ],
+  "settings": { "initialBalance": 0 }
+}

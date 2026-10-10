@@ -1,0 +1,14 @@
+{
+  "_comentario": "Backup sintético no formato da v1.4.0 — SEM contas, SEM cartões, SEM terceiros. O campo do valor chama-se 'value' (legado) e o saldo inicial fica em settings.initialBalance.",
+  "version": "1.4.0",
+  "createdAt": "2026-08-15T12:00:00.000Z",
+  "transactions": [
+    { "id": "tx_v4_1", "type": "in",  "value": 320000, "date": "2026-08-05", "catId": "in_salario",     "desc": "Salário (agosto)" },
+    { "id": "tx_v4_2", "type": "out", "value": 95000,  "date": "2026-08-10", "catId": "out_moradia",    "desc": "Aluguel" },
+    { "id": "tx_v4_3", "type": "out", "value": 62340,  "date": "2026-08-07", "catId": "out_alimentacao","desc": "Mercado" },
+    { "id": "tx_v4_4", "type": "out", "value": 1350,   "date": "2026-08-12", "catId": "out_transporte", "desc": "Ônibus" },
+    { "id": "tx_v4_5", "type": "in",  "value": 85000,  "date": "2026-08-18", "catId": "in_freela",      "desc": "Freela" },
+    { "id": "tx_v4_6", "type": "out", "value": 18990,  "date": "2026-08-11", "catId": "out_servicos",   "desc": "Conta de luz" }
+  ],
+  "settings": { "initialBalance": 150000 }
+}

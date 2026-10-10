@@ -1,0 +1,36 @@
+{
+  "_comentario": "Backup sintético no formato da v1.10.0 — já tem 'kind' nos cartões e transferências, mas a lista de categorias é a de antes (faltam as categorias novas da v1.10+, que a migração precisa anexar).",
+  "version": "1.10.0",
+  "createdAt": "2026-10-02T12:00:00.000Z",
+  "accounts": [
+    { "id": "acc_v10_1", "type": "bank",   "name": "Conta corrente", "opening": 150000, "icon": "🏦" },
+    { "id": "acc_v10_2", "type": "saving", "name": "Poupança",       "opening": 400000, "icon": "🐖" }
+  ],
+  "cards": [
+    { "id": "card_v10_1", "kind": "credito", "name": "Itaú", "final": "5678", "limit": 600000, "closing": 22, "due": 10, "accId": "acc_v10_1" },
+    { "id": "card_v10_2", "kind": "vale",    "name": "Sodexo", "final": "9012", "credito": 60000, "closing": 1, "due": 5, "accId": "acc_v10_1" },
+    { "id": "card_v10_3", "kind": "emprestimo", "name": "Empréstimo", "final": "", "parcelas": 24, "valorParcela": 18000, "taxa": 2.3, "closing": 1, "due": 15, "accId": "acc_v10_1" }
+  ],
+  "transactions": [
+    { "id": "tx_v10_1", "type": "in",  "amount": 320000, "date": "2026-10-05", "catId": "in_salario",      "desc": "Salário",            "accId": "acc_v10_1" },
+    { "id": "tx_v10_2", "type": "out", "amount": 95000,  "date": "2026-10-10", "catId": "out_moradia",     "desc": "Aluguel",            "accId": "acc_v10_1" },
+    { "id": "tx_v10_3", "type": "out", "amount": 62340,  "date": "2026-10-07", "catId": "out_alimentacao", "desc": "Mercado",            "cardId": "card_v10_1" },
+    { "id": "tx_v10_4", "type": "out", "amount": 22000,  "date": "2026-10-02", "catId": "out_transporte",  "desc": "Recarga",            "cardId": "card_v10_2" },
+    { "id": "tx_v10_5", "type": "out", "amount": 18000,  "date": "2026-10-15", "catId": "out_emprestimo",  "desc": "Parcela empréstimo", "cardId": "card_v10_3" },
+    { "id": "tx_v10_6", "type": "out", "amount": 32000,  "date": "2026-08-12", "catId": "out_compras",     "desc": "Notebook 10x",       "cardId": "card_v10_1",
+      "group": { "gid": "g_v10_1", "n": 3, "total": 10 } }
+  ],
+  "third": [
+    { "id": "td_v10_1", "person": "João", "amount": 45000, "date": "2026-10-09", "note": "Jantar", "cardId": "card_v10_1", "status": "open", "createdAt": "2026-10-09T12:00:00.000Z" },
+    { "id": "td_v10_2", "person": "Maria", "amount": 12500, "date": "2026-10-21", "note": "Presente", "cardId": "card_v10_1", "status": "paid", "paidAt": "2026-10-22", "createdAt": "2026-10-21T12:00:00.000Z" }
+  ],
+  "transfers": [
+    { "id": "tr_v10_1", "from": "acc_v10_1", "to": "acc_v10_2", "amount": 100000, "date": "2026-10-05", "note": "Guardar" }
+  ],
+  "categories": [
+    { "id": "out_moradia", "name": "Moradia", "icon": "🏠", "kind": "out" },
+    { "id": "out_alimentacao", "name": "Alimentação", "icon": "🍽️", "kind": "out" },
+    { "id": "in_salario", "name": "Salário", "icon": "💼", "kind": "in" }
+  ],
+  "settings": { "initialBalance": 0 }
+}
