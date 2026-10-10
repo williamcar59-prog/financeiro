@@ -46,8 +46,10 @@
 <script src="store.js"></script>
 <!-- gerador de QR (só é usado em "Compartilhar com terceiro" — v1.9.1) -->
 <script src="qrcode.js"></script>
-<!-- jsPDF + o desenho do relatório (v1.11.0 — PDF do mês) -->
-<script src="jspdf.umd.min.js"></script>
+<!-- desenho do relatório (v1.11.0 — PDF do mês).
+     O jsPDF (jspdf.umd.min.js, 356 KB) NÃO é mais carregado aqui: desde a
+     v1.12.0 ele só é baixado quando a pessoa pede o PDF (relatorio.js
+     injeta o <script> na hora — o service worker guarda para o offline). -->
 <script src="relatorio.js"></script>
 <script src="app.js"></script>
 </body>

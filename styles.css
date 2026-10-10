@@ -1004,3 +1004,58 @@ body.nao-logado #app { display: none; }
   color: var(--ink-2);
   border-color: transparent;
 }
+
+/* ============ v1.13.0: conciliação com o extrato ============ */
+.conc-barra-wrap { margin: 10px 0 4px; }
+.conc-barra-linha {
+  display: flex; justify-content: space-between;
+  font-size: 12.5px; color: var(--ink-2); margin-bottom: 5px;
+}
+.conc-barra {
+  height: 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.07); overflow: hidden;
+}
+.conc-barra i {
+  display: block; height: 100%; border-radius: 999px;
+  transition: width .3s ease;
+}
+.conc-acoes { display: flex; gap: 8px; margin: 10px 0 4px; }
+.conc-acoes .btn { flex: 1; margin-top: 0; }
+
+/* a linha da conferência: toque inteiro, ☐/☑ à esquerda */
+.conc-rows { display: flex; flex-direction: column; gap: 6px; }
+.conc-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px; cursor: pointer;
+  font: inherit; color: inherit; transition: background .15s, border-color .15s;
+}
+.conc-row:active { transform: scale(.995); }
+.conc-row.feito { background: var(--in-soft); border-color: rgba(22, 163, 74, .35); }
+.conc-caixa {
+  flex: 0 0 24px; width: 24px; height: 24px; border-radius: 7px;
+  border: 2px solid var(--ink-3); display: flex; align-items: center;
+  justify-content: center; font-size: 14px; color: #fff; line-height: 1;
+}
+.conc-row.feito .conc-caixa { background: var(--in); border-color: var(--in); }
+.conc-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.conc-desc {
+  font-weight: 600; font-size: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.conc-sub { font-size: 11.5px; color: var(--ink-2); }
+.conc-ok { color: var(--in); font-weight: 700; }
+.conc-val { font-weight: 700; font-size: 14px; white-space: nowrap; }
+.conc-val.g { color: var(--in); }
+.conc-val.r { color: var(--out); }
+
+/* dica de baixo da folha */
+.conc-dica {
+  margin: 12px 0 4px; font-size: 12.5px; color: var(--ink-2);
+  background: var(--bg); border-radius: 10px; padding: 10px 12px;
+  line-height: 1.5;
+}
+.conc-dica b { color: var(--ink); }
+/* o nav de mês da folha fica centralizado e mais discreto */
+.conc-nav { display: flex; justify-content: center; margin: 6px 0 2px; }
+.conc-nav .month-nav { border: 0; padding: 0; background: none; }

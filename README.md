@@ -601,6 +601,163 @@ gasto. Dá para guardar, imprimir ou mandar pra alguém.
 > 🔎 Para conferir: abra **Relatórios** → toque no botão do PDF → o arquivo
 > baixa e aparece o aviso "📄 Relatório de outubro 2026 salvo".
 
+### 🛡️ Seus dados blindados (v1.11.1)
+
+Nesta versão o app aprendeu a **não deixar nada sumir** quando a internet cai
+ou quando você usa dois aparelhos.
+
+**🔄 Fila de sincronização (nada fica esperando você mexer de novo)**
+- Se você lançar sem internet, o app guarda tudo aqui e mostra
+  **"⏳ 3 alterações pendentes — envia sozinho"**.
+- Quando a conexão volta (ou o app volta a ficar visível), ele **reenvia
+  sozinho** — não precisa apertar botão nem lembrar.
+- A fila **sobrevive a fechar e abrir o app**: mesmo que você desligue o
+  celular no meio, o que ficou pendente continua pendente e é enviado na
+  próxima abertura.
+
+**🤔 Duas versões dos dados (quando dois aparelhos brigam)**
+- Antes, se o celular e o computador mudassem os dados, o que chegasse
+  **por último apagava em silêncio** o que o outro tinha feito.
+- Agora o app **pergunta**: aparece a tela *"🔄 Duas versões dos dados"* com
+  duas opções — **"Manter o que está aqui e enviar"** ou **"Baixar da nuvem"**.
+- Se escolher baixar, **o que estava no aparelho fica guardado** e um botão
+  **"↩ Desfazer"** aparece por alguns segundos, caso tenha sido engano.
+
+**🔒 Sessão expirada sem susto**
+- Quando a sessão do Supabase cai, o app agora avisa direito:
+  *"Sua sessão expirou — entre de novo para enviar 2 alterações que estão
+  guardadas neste aparelho"*. Nada se perde: fica tudo salvo até você entrar.
+
+**📥 Backup do mês com um toque**
+- O aviso *"📅 Fechou setembro 2026"* ganhou um segundo botão:
+  **"📥 Backup .json"**. Baixa o mesmo arquivo de *⚙️ Ajustes → Exportar*,
+  mas já com o nome do mês (`backup-financas-2026-09.json`) — fácil de achar
+  depois.
+
+**🛡️ Proteções extras**
+- **Importar backup** e **🗑️ Apagar todos os dados** agora guardam uma cópia
+  antes — e o aviso vem com **"↩ Desfazer"**, para um clique errado não
+  custar dias de lançamento.
+- O app pede ao navegador **armazenamento permanente**, para que o sistema
+  não possa "liberar espaço" e apagar seus dados sem você pedir.
+
+> 🔎 Para conferir: desligue o Wi-Fi, lance um gasto e olhe a faixa de
+> sincronização — deve mostrar "⏳ 1 alteração pendente". Ligue o Wi-Fi de
+> novo e espere alguns segundos: vira "Sincronizado ✓" sozinho.
+
+### 📄📄 O PDF virou o relatório completo (v1.12.0)
+
+O PDF do mês deixou de ser só a capa. Agora ele é o **relatório inteiro**,
+com o que dá pra conferir no papel:
+
+**1. Capa** (como sempre foi): entradas, saídas, saldo, caixa ao fim do mês,
+as barras dos últimos 6 meses, a média e o maior gasto.
+
+**2. Tabela linha a linha** — todos os lançamentos do mês, um por linha:
+`data · descrição · categoria · parcela · valor`.
+- Entradas em verde, saídas em vermelho — igual ao app;
+- compras parceladas mostram em que parcela estão: **`3/10`**, **`5/12`**;
+- quando a tabela não cabe numa página, ela **continua na próxima** com o
+  cabeçalho repetido (fica fácil de ler no papel);
+- no fim, a régua de fechamento: *"No período: entradas R$ … · saídas R$ …"*.
+
+**3. 💳 Faturas dos cartões** — quanto cada cartão de crédito fez no mês,
+com o total. Se alguém gastou com o **seu** cartão, aparece escrito:
+*"Nubank •1234 — de terceiros R$ 575,00"*.
+- Logo abaixo: **"Compras parceladas no mês: R$ 470,00 (2 compras)"**.
+
+**4. 👥 Gastos de terceiros** — quanto cada pessoa gastou no mês e, quando
+foi no seu cartão, está marcado: *"João — no seu cartão R$ 450,00"*.
+- Fecha com o total e com o **"A receber: R$ 607,00"**.
+
+- **Número de página** em todo rodapé: *"página 2 de 2"*.
+- O nome do cartão é cortado com **"…"** se for comprido demais — nada de
+  texto saindo pra fora da página.
+
+**🚀 O app ficou mais leve**
+- O jsPDF (356 KB — o maior arquivo do app) **não é mais lido na abertura**.
+  Agora ele só é baixado **no momento em que você pede o PDF** (um toque,
+  leva menos de meio segundo).
+- Ele continua guardado no cache do service worker, então **o PDF funciona
+  offline** do mesmo jeito.
+
+> 🔎 Para conferir: abra **Relatórios** com pelo menos um cartão de crédito
+> e uma compra parcelada → toque no botão do PDF → abra o arquivo. Devem
+> aparecer a tabela com as parcelas (ex.: `3/10`) e a seção das faturas.
+
+### ✔ Conferir com o extrato (v1.13.0)
+
+Fim de mês e o extrato do banco está na sua mão, mas o app não mostra se
+o que está aqui bate com o que está lá? Agora dá para conferir, linha por
+linha.
+
+Em **Lançamentos** aparece o botão **"✔ Conferir com o extrato"**. Ele
+abre a lista do mês com uma **caixinha em cada lançamento** — você abre o
+extrato do banco do lado e vai tocando em cada linha que encontra lá.
+
+- **Barra de progresso** no topo: *"12 de 18 conferidos · 67%"* — e o
+  botão da aba acompanha: *"✔ Conferir com o extrato · faltam 6"*.
+- Quando o mês fica **100% conferido**, o botão vira um recado verde:
+  *"✔ 18 de 18 conferidos"*.
+- As setinhas **‹ ›** trocam de mês **dentro da folha**, sem tirar você
+  da aba de Lançamentos.
+- **Marcar todos** e **Limpar marcações** resolvem o mês de uma vez.
+- Cada marcação guarda o **dia da conferência** (ex.: *"conferido
+  10/10/2026"*), então dá para saber o que já foi conferido e quando.
+
+**Marcar não altera nada.** Não muda valor, categoria, conta nem data — é
+só um ✔. Serve para achar **lançamento esquecido** (sobra linha sem ✔)
+e **lançamento duplicado** (o mesmo valor aparece duas vezes no extrato).
+
+- O ✔ viaja junto no **backup** e na **nuvem** — se você marcou no
+  celular, o computador vê a mesma coisa.
+- Lançamento **novo nasce sem ✔**, e um antigo importado de backup também
+  (mesmo o de versões antigas do app).
+
+> 🔎 Para conferir: abra **Lançamentos** → toque em **"✔ Conferir com o
+> extrato"** → marque duas linhas e veja a barra ir para "2 de 18". Feche
+> e abra de novo: as marcações continuam.
+
+### 🧪 Banco de teste para você experimentar sem medo
+
+Cansado de testar com os seus dados de verdade? O projeto ganhou a pasta
+**`testes/`**, com o script **`banco-teste.js`**: ele monta uma carteira
+completa de demonstração — 3 contas, 3 cartões (crédito, VR/VA e
+empréstimo), 101 lançamentos de 5 meses, compras parceladas, terceiros e
+transferências — tudo numa **conta separada da sua**.
+
+**Como usar (3 passos):**
+1. Abra o app e entre com **conta de teste** (não a sua).
+2. Abra o console do navegador (**F12 → aba Console**), cole o conteúdo de
+   `testes/banco-teste.js` inteiro e aperte **Enter**.
+3. Recarregue a página: a carteira de demonstração aparece pronta.
+
+> ⚠️ O script **apaga o que estiver na conta logada** e monta a carteira do
+> zero — por isso só se usa em conta de teste. As categorias não são tocadas.
+> Ele é a forma mais rápida de testar qualquer função sem medo de apagar
+> lançamento de verdade.
+
+A pasta tem também o **teste de importação de backups antigos**
+(`testes/_teste_importacao.html`): ele importa, de verdade, arquivos
+exportados nas **v1.4.0, v1.6.0 e v1.10.0** e confere 26 coisas — `value`
+virando `amount`, `who` virando `person`, `paid` virando `status`, cartão
+ganhando o `kind` certo, categorias que faltam sendo anexadas — e ainda
+verifica que **arquivos ruins são recusados** (JSON inválido, objeto sem
+lançamentos, arquivo vazio). Um backup que você exportou ano passado
+continua importando hoje.
+
+### 📖 Manual do usuário em PDF (com prints)
+
+A pasta **`MANUAL/`** traz o **`manual-do-app.pdf`**: 11 páginas com os
+prints reais das telas (início, lançamentos, cartões, terceiros,
+relatórios, formulário e ajustes) e o passo a passo de cada uma — do
+primeiro lançamento ao relatório em PDF. Dá para imprimir ou mandar pra
+alguém que está começando.
+
+Para regerar depois de mudar o app, existe o gerador
+(`_gera_manual.html`): tire os prints novos, salve em `MANUAL/prints/` e
+clique em gerar.
+
 ### 📈 Onde entrou o dinheiro (Relatórios)
 
 Novo bloco em **Relatórios** com as entradas do mês por categoria e o %

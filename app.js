@@ -8,8 +8,8 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.11.0";
-  const BUILD_DATE = "09/10/2026"; /* data da publicação */
+  const APP_VERSION = "1.13.0";
+  const BUILD_DATE = "10/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
@@ -105,6 +105,9 @@
     busca: "",
     /* agrupamento da lista: "dia" (padrão) · "cat" (por categoria) */
     txAgrup: "dia",
+    /* mês mostrado DENTRO da folha de conciliação (v1.13.0) — guardado à
+       parte para as setinhas dela não mudarem a aba de Lançamentos */
+    concMes: "",
     /* relatórios: categoria em destaque ("" = todas) e mês de comparação */
     repCat: "",
     repCmp: "",
@@ -451,17 +454,22 @@
     );
   }
 
-  function monthNav() {
-    const atual = monthLabel(state.month); /* "Outubro 2026" */
+  /* nav de mês. Sem parâmetro usa o mês da aba (state.month) — é o caso
+     das telas. A folha de conciliação passa o seu próprio mês e a sua
+     própria ação, para as setinhas não brigarem com a aba de baixo. */
+  function monthNav(mk, act) {
+    const mes = mk || state.month;
+    const acao = act || "month";
+    const atual = monthLabel(mes); /* "Outubro 2026" */
     const p = atual.split(" ");
     /* versão curta ("Out 2026") usada em telas estreitas — ver @media 400px */
     const curto = p[0].slice(0, 3) + " " + (p[1] || "");
     return (
       '<div class="month-nav">' +
-      '<button data-act="month" data-d="-1" aria-label="Mês anterior">‹</button>' +
+      '<button data-act="' + acao + '" data-d="-1" aria-label="Mês anterior">‹</button>' +
       '<span class="mlabel"><span class="lb-full">' + esc(atual) + "</span>" +
       '<span class="lb-short">' + esc(curto) + "</span></span>" +
-      '<button data-act="month" data-d="1" aria-label="Próximo mês">›</button>' +
+      '<button data-act="' + acao + '" data-d="1" aria-label="Próximo mês">›</button>' +
       "</div>"
     );
   }
@@ -603,6 +611,11 @@
       chip("in", "Entradas", state.txFilter, "tx") +
       chip("out", "Saídas", state.txFilter, "tx") +
       "</div>" +
+      /* conciliação com o extrato (v1.13.0) — só aparece se houver
+         lançamento no mês, e mostra o quanto já foi conferido */
+      (Store.txOfMonth(state.month).length
+        ? concilBtn(state.month)
+        : "") +
       (list.length
         ? '<div class="agrup-row">' +
           '<button class="agrup-btn' + (porCat ? "" : " active") +
@@ -621,6 +634,122 @@
       '<button class="chip ' + (current === val ? "active" : "") +
       '" data-act="filter" data-kind="' + kind + '" data-f="' + val + '">' +
       esc(label) + "</button>"
+    );
+  }
+
+  /* =====================================================================
+     CONCILIAÇÃO COM O EXTRATO (v1.13.0)
+     O usuário abre o extrato do banco do lado e vai marcando, um por um,
+     o que já bateu. Marcar não muda nada do lançamento — é só um ✔ com
+     a data da conferência. Serve para achar lançamento esquecido e
+     lançamento duplicado.
+     ===================================================================== */
+
+  /* botão "✔ Conferir com o extrato" que aparece na aba Lançamentos */
+  function concilBtn(mk) {
+    const st = Store.reconcileStats(mk);
+    if (!st.total) return "";
+    const tudo = st.ok === st.total;
+    /* quando o mês está 100% conferido, o botão vira um "recado verde" */
+    const rotulo = tudo
+      ? "✔ " + st.total + " de " + st.total + " conferidos"
+      : st.ok
+        ? "✔ Conferir com o extrato · faltam " + st.falta
+        : "✔ Conferir com o extrato";
+    const estilo = tudo
+      ? 'style="border-color:var(--in);color:var(--in);background:rgba(5,150,105,.08)"'
+      : st.ok
+        ? 'style="border-color:var(--brand);color:var(--brand)"'
+        : "";
+    return (
+      '<button class="btn ghost" data-act="conferir" data-mes="' + mk + '" ' +
+      estilo + ' style="width:100%;margin-top:8px;' + (tudo ? "" : "") + '">' +
+      esc(rotulo) + "</button>"
+    );
+  }
+
+  /* barra de progresso "12 de 18" + trilho pintado */
+  function concilBarra(st) {
+    const pct = st.total ? Math.round((st.ok / st.total) * 100) : 0;
+    const cor = pct === 100 ? "var(--in)" : pct ? "var(--brand)" : "var(--ink-3)";
+    return (
+      '<div class="conc-barra-wrap">' +
+      '<div class="conc-barra-linha"><span>' + st.ok + " de " + st.total +
+      " conferidos</span><span>" + pct + "%</span></div>" +
+      '<div class="conc-barra"><i style="width:' + pct + "%;background:" + cor + '"></i></div>' +
+      "</div>"
+    );
+  }
+
+  /* uma linha da lista de conferência: ☐ / ☑ à esquerda, dados à direita */
+  function rowConciliar(t) {
+    const feito = !!t.reconciledAt;
+    const parcela = t.group
+      ? '<span class="pill parcela">' + t.group.n + "/" + t.group.total + "</span>"
+      : "";
+    const dest = destLabel(t);
+    const sub = [esc(catName(t.catId))];
+    if (dest) sub.push('<span class="pill">' + esc(dest) + "</span>");
+    if (parcela) sub.push(parcela);
+    return (
+      '<button class="conc-row' + (feito ? " feito" : "") +
+      '" data-act="conc-toggle" data-id="' + t.id + '" ' +
+      'aria-pressed="' + (feito ? "true" : "false") + '">' +
+      '<span class="conc-caixa" aria-hidden="true">' + (feito ? "✔" : "") + "</span>" +
+      '<span class="conc-txt">' +
+      '<span class="conc-desc">' + esc(t.note || catName(t.catId)) + "</span>" +
+      '<span class="conc-sub">' + sub.join(" · ") +
+      (feito ? ' · <b class="conc-ok">conferido ' + esc(fullDate(t.reconciledAt)) + "</b>" : "") +
+      "</span></span>" +
+      '<span class="conc-val ' + (t.type === "in" ? "g" : "r") + '">' +
+      (t.type === "in" ? "+" : "−") + fmt(t.amount) + "</span>" +
+      "</button>"
+    );
+  }
+
+  /* a folha inteira de conferência */
+  function conciliarSheet(mk) {
+    const list = Store.txOfMonth(mk).slice().sort((a, b) =>
+      (a.date + String(a.createdAt)).localeCompare(b.date + String(b.createdAt))
+    );
+    const st = Store.reconcileStats(mk);
+    const groups = {};
+    list.forEach((t) => (groups[t.date] = groups[t.date] || []).push(t));
+
+    const corpo = list.length
+      ? Object.keys(groups)
+          .sort()
+          .map(
+            (d) =>
+              '<div class="day-group"><div class="day-label">' +
+              esc(dateLabel(d)) +
+              ' <span class="gl-val">' + groups[d].length + "</span></div>" +
+              '<div class="rows conc-rows">' +
+              groups[d].map(rowConciliar).join("") +
+              "</div></div>"
+          )
+          .join("")
+      : '<div class="empty"><div class="big">🗒️</div><h3>Sem lançamentos</h3>' +
+        "<p>Não há nada para conferir em " + esc(monthLabel(mk)) + ".</p></div>";
+
+    openSheet(
+      '<div class="sheet-head"><h2>✔ Conferir com o extrato</h2>' +
+      '<button class="sheet-x" data-act="close-modal" aria-label="Fechar">×</button></div>' +
+      '<div class="sheet-sub">Abra o extrato do banco do lado e toque em cada linha ' +
+      "que você encontrar lá. Marcar não altera nada — é só um ✔ de conferido.</div>" +
+      '<div class="conc-nav">' + monthNav(mk, "conc-month") + "</div>" +
+      concilBarra(st) +
+      (st.total
+        ? '<div class="conc-acoes">' +
+          '<button class="btn ghost" data-act="conc-todos" data-mes="' + mk + '">' +
+          "Marcar todos</button>" +
+          '<button class="btn ghost" data-act="conc-nenhum" data-mes="' + mk + '">' +
+          "Limpar marcações</button></div>"
+        : "") +
+      corpo +
+      '<div class="conc-dica"><b>O que procurar:</b> se sobrar lançamento na lista sem ' +
+      "✔, é gasto que não foi lançado; se o extrato mostrar duas vezes o mesmo valor, " +
+      "pode haver lançamento duplicado aqui. Toque na linha para marcar ou desmarcar.</div>"
     );
   }
 
@@ -1799,15 +1928,17 @@
   }
 
   /* =====================================================================
-     RELATÓRIO DO MÊS EM PDF (v1.11.0)
+     RELATÓRIO DO MÊS EM PDF (v1.11.0 · completo na v1.12.0)
      Junta os números do mês e manda pro relatorio.js (jsPDF) desenhar.
      ===================================================================== */
-  function baixarPDFMes(mk) {
+  async function baixarPDFMes(mk) {
     try {
       if (!window.RelatorioPDF)
         return toast("O gerador de PDF não carregou — abra o app de novo");
       const l = Store.txOfMonth(mk);
       if (!l.length) return toast("Sem lançamentos em " + monthLabel(mk));
+
+      toast("📄 Gerando o PDF…");
 
       /* série dos 6 meses que terminam em mk (a mesma base do gráfico) */
       const serie = [];
@@ -1824,6 +1955,58 @@
       const maior = outs.slice().sort((a, b) => b.amount - a.amount)[0];
       const br = (d) => String(d || "").split("-").reverse().join("/");
 
+      /* ---- v1.12.0: o resto do relatório ---- */
+
+      /* tabela linha a linha, em ordem de data */
+      const lancs = l
+        .slice()
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .map((t) => ({
+          d: br(t.date),
+          desc: t.desc || t.note || catName(t.catId),
+          cat: catName(t.catId),
+          v: t.amount,
+          tipo: t.type,
+          /* parcela em que está (3/12) quando a compra foi parcelada */
+          parc: t.group && t.group.total > 1 ? t.group.n + "/" + t.group.total : ""
+        }));
+
+      /* fatura de cada cartão de crédito no mês (vale e empréstimo ficam
+         de fora — como na Home, eles não têm "fatura do mês") */
+      const faturas = Store.cards()
+        .filter((c) => Store.cardKind(c) === "credito")
+        .map((c) => {
+          const inv = Store.cardInvoice(c.id, mk);
+          return {
+            nome: c.name + (c.final ? " •" + c.final : ""),
+            total: inv.total,
+            outros: inv.others
+          };
+        });
+
+      /* quanto do mês veio parcelado */
+      const parcelados = l.filter((t) => t.type === "out" && t.group && t.group.total > 1);
+
+      /* terceiros do mês, agrupados por pessoa (e o que saiu do SEU cartão) */
+      const tdMes = Store.data.third.filter((t) => String(t.date || "").slice(0, 7) === mk);
+      const porPessoa = {};
+      tdMes.forEach((t) => {
+        const p = t.person || "Sem nome";
+        if (!porPessoa[p]) porPessoa[p] = { pessoa: p, total: 0, cartao: 0 };
+        porPessoa[p].total += t.amount || 0;
+        if (t.cardId) porPessoa[p].cartao += t.amount || 0;
+      });
+      const terceiros = Object.keys(porPessoa)
+        .map((k) => porPessoa[k])
+        .sort((a, b) => b.total - a.total);
+      const tdAbrir = tdMes
+        .filter((t) => t.status !== "paid")
+        .reduce((s, t) => s + (t.amount || 0), 0);
+
+      /* v1.12.0: o jsPDF (356 KB) só é baixado AGORA — antes ele era
+         analisado em toda abertura do app (deixava o celular mais lento) */
+      await window.RelatorioPDF.carregar();
+
       const doc = window.RelatorioPDF.gerar({
         mesLabel: monthLabel(mk),
         geradoEm: br(today()),
@@ -1838,6 +2021,13 @@
           : null,
         nIn: ins.length,
         nOut: outs.length,
+        /* v1.12.0 */
+        lancs: lancs,
+        faturas: faturas,
+        parcelado: parcelados.reduce((s, t) => s + t.amount, 0),
+        parceladoN: parcelados.length,
+        terceiros: terceiros,
+        tdAbrir: tdAbrir,
         versao: APP_VERSION
       });
       const nome = "relatorio-" + mk + ".pdf";
@@ -2886,9 +3076,13 @@
       const el = document.getElementById("syncTxt");
       if (el) el.textContent = "Sincronizando…";
       Store.auth.syncNow()
-        .then(() => {
+        .then((r) => {
           if (el) el.textContent = Store.auth.status().label;
-          toast("Sincronizado ✓");
+          /* v1.11.1: em conflito o sheet já abriu com as opções — não diga
+             "sincronizado" para não dar a impressão de que tudo passou */
+          if (r === "conflict") return;
+          if (r === "local-newer" || r === "empty") toast("Enviado para a nuvem ✓");
+          else toast("Sincronizado ✓");
         })
         .catch((e) => {
           if (el) el.textContent = Store.auth.status().label;
@@ -3062,11 +3256,112 @@
 
     "close-modal"() { closeSheet(); },
     budgets() { budgetsSheet(); },
+
+    /* ---------- conciliação com o extrato (v1.13.0) ---------- */
+    conferir(el) {
+      state.concMes = (el && el.dataset.mes) || state.month;
+      conciliarSheet(state.concMes);
+    },
+    /* muda de mês DENTRO da folha — não mexe na aba de baixo */
+    "conc-month"(el) {
+      const d = Number(el.dataset.d) || 0;
+      const mk = state.concMes || state.month;
+      const prox = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1 + d, 1);
+      state.concMes = prox.getFullYear() + "-" +
+        String(prox.getMonth() + 1).padStart(2, "0");
+      conciliarSheet(state.concMes);
+    },
+    /* marca/desmarca UM lançamento, sem fechar a folha */
+    "conc-toggle"(el) {
+      Store.toggleReconcile(el.dataset.id);
+      const mk = state.concMes || state.month;
+      conciliarSheet(mk);           /* reabre com o contador atualizado */
+      render(false);                /* e atualiza o botão da aba */
+    },
+    "conc-todos"(el) {
+      const mk = el.dataset.mes || state.month;
+      const n = Store.reconcileAll(mk, true);
+      conciliarSheet(mk);
+      render(false);
+      toast(n ? "✔ " + n + " lançamento(s) conferido(s)" : "Tudo já estava conferido");
+    },
+    "conc-nenhum"(el) {
+      const mk = el.dataset.mes || state.month;
+      Store.reconcileAll(mk, false);
+      conciliarSheet(mk);
+      render(false);
+      toast("Marcações limpas — o mês volta a ficar por conferir");
+    },
+    /* ---------------------------------------------------------- */
+
     /* v1.11.0 — PDF do mês: sai da tela de Relatórios ou do aviso da virada */
     "pdf-mes"(el) {
       const mk = (el && el.dataset.mes) || state.month;
       if ($("#modal-root").innerHTML) closeSheet();
       baixarPDFMes(mk);
+    },
+    /* v1.11.1 — conflito entre aparelhos: a nuvem mudou por último */
+    "conflito-enviar"() {
+      closeSheet();
+      Store.auth.push()
+        .then(() => {
+          render();
+          toast("Suas alterações foram para a nuvem ✓");
+        })
+        .catch(() =>
+          toast("Sem conexão — reenviamos sozinho quando a internet voltar")
+        );
+    },
+    "conflito-baixar"() {
+      closeSheet();
+      Store.auth.aplicarNuvem()
+        .then((r) => {
+          render();
+          if (r === "applied") {
+            toast("Baixado da nuvem ✓ o que estava aqui ficou guardado", function () {
+              if (Store.auth.restaurarCopia()) {
+                render();
+                toast("Voltamos para o que estava aqui");
+              }
+            });
+          } else {
+            toast("A nuvem está igual — nada mudou");
+          }
+        })
+        .catch(() => toast("Não deu para baixar — tente de novo"));
+    },
+    /* v1.11.1 — o .json do mês que fechou (mesmo arquivo de Ajustes) */
+    "backup-mes"(el) {
+      const mk = (el && el.dataset.mes) || "";
+      if ($("#modal-root").innerHTML) closeSheet();
+      try {
+        const nome = mk
+          ? "backup-financas-" + mk + ".json"
+          : "backup-financas-" + today() + ".json";
+        const texto = Store.exportJSON();
+        const arquivo = new File([texto], nome, { type: "application/json" });
+        /* celular: abre a folha de compartilhar (Drive, WhatsApp, Arquivos) */
+        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+          navigator
+            .share({ files: [arquivo], title: "Backup Minha Vida Financeira" })
+            .then(() => {
+              Store.markBackup();
+              toast("Backup compartilhado ✓");
+            })
+            .catch(() => toast("Backup cancelado"));
+          return;
+        }
+        const blob = new Blob([texto], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = nome;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+        Store.markBackup();
+        toast("Backup salvo: " + nome);
+      } catch (e) {
+        toast("Não deu para gerar o backup — tente de novo");
+      }
     },
     move() { moveSheet(); },
     "del-acc"(el) {
@@ -3416,10 +3711,23 @@
           const r = new FileReader();
           r.onload = () => {
             try {
+              /* v1.11.1: guarda uma cópia do que temos aqui ANTES de trocar
+                 tudo — se o arquivo errado for importado, dá para desfazer */
+              const deuCopia = Store.auth.guardarCopia();
               const res = Store.importJSON(r.result);
               closeSheet();
               render();
-              toast("Backup importado ✓ " + res.tx + " lançamentos");
+              toast(
+                "Backup importado ✓ " + res.tx + " lançamentos",
+                deuCopia
+                  ? function () {
+                      if (Store.auth.restaurarCopia()) {
+                        render();
+                        toast("Importação desfeita ✓ os dados antigos voltaram");
+                      }
+                    }
+                  : null
+              );
             } catch (e) {
               settingsSheet();
               toast("Arquivo inválido — use um backup .json deste app");
@@ -3447,7 +3755,21 @@
     },
     reset() {
       askConfirm("Apagar tudo?", "Todos os lançamentos, cartões e terceiros serão perdidos.",
-        () => { Store.reset(); closeSheet(); go("home"); toast("Dados apagados"); });
+        () => {
+          /* v1.11.1: cópia antes de apagar — dá para voltar atrás */
+          const deuCopia = Store.auth.guardarCopia();
+          Store.reset();
+          closeSheet();
+          go("home");
+          toast("Dados apagados", deuCopia
+            ? function () {
+                if (Store.auth.restaurarCopia()) {
+                  render();
+                  toast("Nada foi perdido ✓ os dados voltaram");
+                }
+              }
+            : null);
+        });
     }
   };
 
@@ -4115,6 +4437,10 @@
     } catch (e) {}
     try {
       const r = await Store.auth.pull();
+      /* v1.11.1: já baixou (ou deixou o conflito em aberto) — agora sim
+         reenvia o que estava pendente. Antes de puxar seria perigoso:
+         poderia sobrescrever o que outro aparelho acabou de mandar. */
+      if (r !== "conflict") Store.auth.reenviar();
       if (primeira) {
         try {
           localStorage.setItem(marca, "1");
@@ -4151,6 +4477,9 @@
         } else if (r === "empty") {
           /* dados só neste aparelho: sobe sem perguntar */
           Store.auth.push().catch(() => {});
+        } else if (r === "conflict") {
+          /* v1.11.1: o sheet de conflito já abriu — deixa a pessoa escolher
+             (empurrar aqui agora apagaria o que o outro aparelho mandou) */
         } else if (r === "applied") {
           render();
           toast("Dados sincronizados da nuvem ✓");
@@ -4158,6 +4487,8 @@
           /* nuvem mais antiga: o que está aqui manda */
           Store.auth.push().catch(() => {});
         }
+      } else if (r === "conflict") {
+        /* v1.11.1: conflito na abertura — o sheet cuida disso */
       } else if (r === "applied") {
         render();
       }
@@ -4266,12 +4597,16 @@
         if ($("#modal-root").innerHTML) return;
         openSheet(
           '<h2>📅 Fechou ' + esc(monthLabel(anterior)) + "</h2>" +
-            '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 18px">' +
-            "Que tal guardar o relatório do mês em PDF? Sai o resumo: entradas, " +
-            "saídas, saldo, caixa e o maior gasto — tudo numa página só.</p>" +
-            '<div class="form-actions">' +
+            '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 16px">' +
+            "Que tal guardar o mês? Sai o <b>relatório em PDF</b> (resumo: " +
+            "entradas, saídas, saldo, caixa e maior gasto) e o <b>backup .json</b> " +
+            "— o mesmo arquivo de ⚙️ Ajustes → 📥 Exportar, só que com o nome do mês.</p>" +
+            '<div class="form-actions dupla">' +
             '<button class="btn" data-act="pdf-mes" data-mes="' + anterior + '">' +
-            "📄 Gerar o PDF</button> " +
+            "📄 PDF do mês</button>" +
+            '<button class="btn ghost" data-act="backup-mes" data-mes="' + anterior + '">' +
+            "📥 Backup .json</button></div>" +
+            '<div class="form-actions">' +
             '<button class="btn ghost" data-act="close-modal">Agora não</button>' +
             "</div>"
         );
@@ -4286,12 +4621,46 @@
     primeiraVez();
   } /* fim iniciarApp() */
 
-  /* sessão caiu no meio do uso → volta para a tela de login */
+  /* sessão caiu no meio do uso → volta para a tela de login avisando se
+     ficou algo pendente (v1.11.1: nada some, fica salvo no aparelho) */
   Store.auth.onExpired(() => {
     try {
       closeSheet();
     } catch (e) {}
-    mostrarLogin("Sua sessão expirou — entre de novo");
+    const n = Store.auth.pendentes();
+    mostrarLogin(
+      n > 0
+        ? "Sua sessão expirou — entre de novo para enviar " + n + " " +
+          (n > 1
+            ? "alterações que estão guardadas"
+            : "alteração que está guardada") +
+          " neste aparelho"
+        : "Sua sessão expirou — entre de novo"
+    );
+  });
+
+  /* v1.11.1 — outro aparelho mandou coisa nova enquanto este tinha
+     alterações pendentes: em vez de apagar em silêncio, pergunta */
+  Store.auth.onConflict(() => {
+    try {
+      if (document.getElementById("lock")) return;   /* travado: espera */
+      if ($("#modal-root").innerHTML) return;        /* sheet aberto: espera */
+      const n = Store.auth.pendentes();
+      openSheet(
+        '<h2>🔄 Duas versões dos dados</h2>' +
+          '<p style="color:var(--ink-2);font-size:14.5px;line-height:1.5;margin:0 0 16px">' +
+          "Este aparelho tem <b>" + n + " " +
+          (n > 1 ? "alterações" : "alteração") +
+          "</b> que ainda não tinha enviado, e a nuvem mudou depois — " +
+          "provavelmente outro aparelho ou computador. <b>O que fica?</b></p>" +
+          '<div class="form-actions">' +
+          '<button class="btn" data-act="conflito-enviar">' +
+          "📤 Manter o que está aqui e enviar</button></div>" +
+          '<div class="form-actions">' +
+          '<button class="btn ghost" data-act="conflito-baixar">' +
+          "📥 Baixar da nuvem (o que está aqui fica guardado)</button></div>"
+      );
+    } catch (e) {}
   });
 
   /* veio do Google com os tokens? limpa a URL. Sem conta: tela de login.
@@ -4341,6 +4710,12 @@
       pinApaga();
     }
   });
+
+  /* v1.11.1 — pede ao navegador armazenamento PERMANENTE: ele não pode
+     "liberar espaço" e apagar seus dados sem você pedir */
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {}
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     navigator.serviceWorker

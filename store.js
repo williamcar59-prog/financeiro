@@ -21,9 +21,31 @@
 
   let dataKey = KEY;          /* chave do aparelho de quem está usando */
   let pushTimer = null;
-  let syncState = "idle";     /* idle | saving | ok | offline | error */
+  let syncState = "idle";     /* idle | saving | ok | offline | error | conflict */
   let syncAt = null;
   let expiredHook = null;
+  let conflictHook = null;
+  /* v1.11.1 — FILA DE SINCRONIZAÇÃO: quantas alterações locais ainda não
+     foram confirmadas pela nuvem e quem reenvia sozinho quando a rede volta.
+     Guardada no aparelho também: se você fechar o app com pendência e
+     reabrir, a fila não pode sumir (senão um push vindo de outro aparelho
+     apagaria em silêncio o que ficou local). */
+  let pendCount = 0;
+  let retryTimer = null;
+
+  function lerPend() {
+    try {
+      return Math.max(0, Number(localStorage.getItem(dataKey + "::pend")) || 0);
+    } catch (e) {
+      return 0;
+    }
+  }
+  function guardarPend() {
+    try {
+      if (pendCount > 0) localStorage.setItem(dataKey + "::pend", String(pendCount));
+      else localStorage.removeItem(dataKey + "::pend");
+    } catch (e) {}
+  }
 
   function readSession() {
     try {
@@ -37,12 +59,14 @@
       localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     } catch (e) {}
     dataKey = s && s.user_id ? KEY + "::" + s.user_id : KEY;
+    pendCount = lerPend();   /* a fila é de cada conta/aparelho */
   }
   function dropSession() {
     try {
       localStorage.removeItem(SESSION_KEY);
     } catch (e) {}
     dataKey = KEY;
+    pendCount = lerPend();
   }
   function b64u(str) {
     return str.replace(/-/g, "+").replace(/_/g, "/");
@@ -138,6 +162,18 @@
   }
   function rotuloSync() {
     if (syncState === "saving") return "Sincronizando…";
+    if (syncState === "conflict")
+      return "⚠️ Este aparelho e a nuvem mudaram — escolha o que fica";
+    /* v1.11.1: nem tudo que você fez chegou na nuvem ainda (fila) */
+    if (pendCount > 0) {
+      const qual = pendCount > 1 ? "alterações" : "alteração";
+      const est = pendCount > 1 ? "pendentes" : "pendente";
+      return (
+        (syncState === "error" ? "⚠️ " : "⏳ ") +
+        pendCount +
+        " " + qual + " " + est + " — envia sozinho"
+      );
+    }
     if (syncState === "offline") return "Sem internet — salvo neste aparelho";
     if (syncState === "error") return "Falha ao sincronizar — tente de novo";
     if (syncState === "ok" && syncAt)
@@ -163,17 +199,68 @@
       console.error("Falha ao salvar dados", e);
     }
   }
+  /* v1.11.1 — a fila: cada alteração local vira "1 pendente" e só some
+     quando a nuvem confirmar o envio. Se falhar, reenvia sozinho. */
   function agendarPush() {
     if (!readSession()) return;
+    pendCount++;
+    guardarPend();
     syncState = "saving";
     avisarSync();
     if (pushTimer) clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
       pushTimer = null;
-      Store.auth.push().catch(() => {});
+      Store.auth.push().catch(() => agendarTentativa(45000));
     }, 1200);
   }
-  async function puxar() {
+  function agendarTentativa(ms) {
+    if (retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      reenviar();
+    }, ms);
+  }
+  /* tenta mandar o que está pendente: quando a conexão volta, quando o app
+     volta a ficar visível, ou quando o reloginheiro de espera acaba */
+  function reenviar() {
+    if (!pendCount || !readSession()) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      /* sem internet: não gasta rede, só espera o próximo relance */
+      agendarTentativa(60000);
+      return;
+    }
+    Store.auth.push().catch(() => agendarTentativa(45000));
+  }
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("online", () => reenviar());
+  }
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) reenviar();
+    });
+  }
+  /* guarda uma cópia do que está aqui antes de trocar pelos dados da nuvem
+     (v1.11.1: dá para desfazer um download da nuvem ou um import errado) */
+  function guardarCopiaLocal() {
+    try {
+      localStorage.setItem(
+        dataKey + "::copia",
+        JSON.stringify({ em: new Date().toISOString(), dados: db })
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function lerCopiaLocal() {
+    try {
+      return JSON.parse(localStorage.getItem(dataKey + "::copia") || "null");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function puxar(forcar) {
     const s = readSession();
     if (!s) return "no-session";
     const vivo = await sessaoViva();
@@ -199,11 +286,27 @@
     }
     if (!remoto.data || !Array.isArray(remoto.data.transactions))
       return "empty";
+    /* v1.11.1 — TEM alteração local pendente E a nuvem está mais nova?
+       Então outro aparelho enviou depois. Antes isso apagava em silêncio o
+       que você fez aqui; agora o app pergunta o que fica. */
+    if (!forcar && pendCount > 0) {
+      syncState = "conflict";
+      avisarSync();
+      if (conflictHook) {
+        try {
+          conflictHook();
+        } catch (e) {}
+      }
+      return "conflict";
+    }
+    guardarCopiaLocal(); /* cópia do que estava aqui, por garantia */
     db = remoto.data;
     if (!db.categories) db.categories = DEFAULT_CATS.slice();
     migrate();
     db.updatedAt = remoto.updated_at;
     guardarLocal();
+    pendCount = 0; /* baixou da nuvem: não tem mais o que enviar */
+    guardarPend();
     syncState = "ok";
     syncAt = Date.now();
     avisarSync();
@@ -280,6 +383,10 @@
       const n = Number(bruto);
       t.amount = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
       if ("value" in t) delete t.value;
+      /* conciliação com o extrato (v1.13.0): dia em que o lançamento foi
+         conferido contra o extrato do banco. Backup antigo não traz o
+         campo — vira null, que é o mesmo que "ainda não conferido". */
+      if (typeof t.reconciledAt !== "string" || !t.reconciledAt) t.reconciledAt = null;
     });
     /* terceiros: mesmo saneamento, mais os campos do esquema antigo
        (who → person · desc → note · value → amount · paid → status).
@@ -357,6 +464,7 @@
         sessaoAtual && sessaoAtual.user_id
           ? KEY + "::" + sessaoAtual.user_id
           : KEY;
+      pendCount = lerPend();   /* v1.11.1: a fila sobrevive ao fechar o app */
       try {
         const raw = localStorage.getItem(dataKey);
         db = raw ? JSON.parse(raw) : seed();
@@ -578,6 +686,10 @@
           cardId: null,
           note: "",
           group: null,
+          /* conciliação com o extrato (v1.13.0): nasce sempre null, que
+             é o mesmo que "ainda não conferido". Precisa vir aqui — sem
+             isto o campo ficava undefined e o export não o trazia. */
+          reconciledAt: null,
           createdAt: Date.now()
         },
         t
@@ -693,6 +805,39 @@
     /* todas as parcelas de uma compra (apagar a compra inteira) */
     txGroup(gid) {
       return Store.data.transactions.filter((t) => t.group && t.group.gid === gid);
+    },
+
+    /* ---------- conciliação com o extrato (v1.13.0) ----------
+       O usuário abre o extrato do banco ao lado e vai marcando, um por
+       um, o que já bateu. O marcado guarda o DIA da conferência
+       (reconciledAt) — assim dá para saber o que foi conferido e quando,
+       e lançamento novo entra automaticamente como "não conferido".
+       Não muda valor, categoria nem conta de ninguém: é só um ✔. */
+    toggleReconcile(id, conferido) {
+      const t = Store.tx(id);
+      if (!t) return null;
+      const marcar = conferido === undefined ? !t.reconciledAt : !!conferido;
+      t.reconciledAt = marcar ? new Date().toISOString().slice(0, 10) : null;
+      persist();
+      return t;
+    },
+    /* marca (ou desmarca) todos os lançamentos de um mês de uma vez */
+    reconcileAll(mk, conferido) {
+      const dia = new Date().toISOString().slice(0, 10);
+      const marcar = conferido !== false;
+      let n = 0;
+      Store.txOfMonth(mk).forEach((t) => {
+        const novo = marcar ? dia : null;
+        if (t.reconciledAt !== novo) { t.reconciledAt = novo; n++; }
+      });
+      if (n) persist();
+      return n;
+    },
+    /* "12 de 18 conferidos" — o contador que aparece no topo */
+    reconcileStats(mk) {
+      const lista = Store.txOfMonth(mk);
+      const ok = lista.filter((t) => t.reconciledAt).length;
+      return { total: lista.length, ok: ok, falta: lista.length - ok };
     },
 
     /* ---------- terceiros (gasto no MEU cartão) ---------- */
@@ -1316,6 +1461,37 @@
     pull() {
       return puxar();
     },
+    /* ---- v1.11.1: fila de sincronização e conflito entre aparelhos ---- */
+    pendentes() {
+      return pendCount;
+    },
+    onConflict(fn) {
+      conflictHook = fn;
+    },
+    /* manda o que está pendente (chamado ao abrir o app) */
+    reenviar() {
+      reenviar();
+    },
+    /* troca o que está aqui pelos dados da nuvem (mantém cópia local) */
+    aplicarNuvem() {
+      return puxar(true);
+    },
+    /* cópia guardada antes de baixar da nuvem / importar */
+    guardarCopia() {
+      return guardarCopiaLocal();
+    },
+    copia() {
+      return lerCopiaLocal();
+    },
+    /* volta para a cópia guardada e a reenvia para a nuvem */
+    restaurarCopia() {
+      const c = lerCopiaLocal();
+      if (!c || !c.dados) return false;
+      db = c.dados;
+      syncState = "idle";
+      persist(); /* salva aqui e agenda o envio */
+      return true;
+    },
 
     /* envia o que está neste aparelho */
     async push() {
@@ -1327,6 +1503,9 @@
         syncState = "saving";
         avisarSync();
         const quando = new Date().toISOString();
+        /* o que está saindo AGORA: se entrar uma alteração durante o envio,
+           ela continua na fila em vez de sumir da contagem (v1.11.1) */
+        const marcador = pendCount;
         await supa("/rest/v1/user_data", {
           method: "POST",
           headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -1338,6 +1517,8 @@
         });
         db.updatedAt = quando;
         guardarLocal();
+        pendCount = Math.max(0, pendCount - marcador);
+        guardarPend();
         syncState = "ok";
         syncAt = Date.now();
         avisarSync();
@@ -1347,6 +1528,8 @@
           typeof navigator !== "undefined" && navigator.onLine === false
             ? "offline"
             : "error";
+        /* v1.11.1: nada de ficar esperando você mexer de novo — reenvia */
+        agendarTentativa(45000);
         if (e.status === 401) sessaoInvalida();
         avisarSync();
         throw e;

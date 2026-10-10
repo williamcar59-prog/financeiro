@@ -1,6 +1,6 @@
 /* Service Worker — cache para funcionar offline */
 /* >>> VERSÃO: precisa ser igual à APP_VERSION no app.js */
-const VERSION = "1.11.0";
+const VERSION = "1.13.0";
 const CACHE = "financas-" + VERSION;
 const ASSETS = [
   "./",
@@ -17,7 +17,8 @@ const ASSETS = [
   /* página pública do terceiro + gerador de QR (v1.9.0) */
   "./terceiro.html",
   "./qrcode.js",
-  /* PDF do mês: jsPDF + o desenho do relatório (v1.11.0) */
+  /* PDF do mês: o jsPDF fica no cache mesmo sendo carregado sob
+     demanda (v1.12.0) — assim dá para gerar o PDF OFFLINE também */
   "./jspdf.umd.min.js",
   "./relatorio.js"
 ];
