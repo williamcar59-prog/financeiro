@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>teste: conciliar com o extrato</title></head>
+<body>
+<h1>Teste — conciliação com o extrato (v1.13.0)</h1>
+<p>Confere a função de marcar lançamento como <b>conferido contra o extrato</b>
+   do banco: marcação individual, marcação em massa, contador do mês,
+   isolamento entre meses e o que acontece com backup antigo.</p>
+<button id="rodar">Rodar o teste</button>
+<pre id="saida">(clique no botão)</pre>
+
+<script>
+/* =====================================================================
+   BLINDAGEM DE SESSÃO (igual à da página de importação)
+   Esconde a chave enquanto o teste roda e devolve no fim — assim nada
+   aqui empurra para a nuvem de verdade.
+   ===================================================================== */
+(function () {
+  var CHAVE = "fin_session_v1";
+  try {
+    var guardada = sessionStorage.getItem("sessao_guardada_pelo_teste");
+    if (guardada === null && localStorage.getItem(CHAVE) !== null) {
+      sessionStorage.setItem("sessao_guardada_pelo_teste", localStorage.getItem(CHAVE));
+      localStorage.removeItem(CHAVE);
+    }
+    window.addEventListener("beforeunload", devolver);
+  } catch (e) { /* sem storage: segue sem blindar */ }
+
+  function devolver() {
+    try {
+      var g = sessionStorage.getItem("sessao_guardada_pelo_teste");
+      if (g !== null) {
+        localStorage.setItem(CHAVE, g);
+        sessionStorage.removeItem("sessao_guardada_pelo_teste");
+      }
+    } catch (e) { /* nada a fazer */ }
+  }
+  window.__devolverSessao = devolver;
+})();
+</script>
+<script src="../store.js"></script>
+<script>
+var sessaoVisivel = false;
+try { sessaoVisivel = localStorage.getItem("fin_session_v1") !== null; } catch (e) {}
+if (sessaoVisivel) {
+  document.getElementById("saida").textContent =
+    "⚠️ A sessão não foi escondida — saia da sua conta ou use a conta de teste.";
+}
+
+var ok = 0, falhas = 0, linhas = [];
+function conf(nome, cond) {
+  if (cond) { ok++; linhas.push("  ✅ " + nome); }
+  else { falhas++; linhas.push("  ❌ " + nome); }
+}
+
+document.getElementById("rodar").onclick = function () {
+  var btn = this, saida = document.getElementById("saida");
+  btn.disabled = true; saida.textContent = "Rodando...";
+  ok = 0; falhas = 0; linhas = [];
+
+  /* estado de antes, para não deixar sujeira */
+  var antes = JSON.parse(JSON.stringify(Store.data || {}));
+
+  try {
+    /* ---------- base: zera e cria 3 meses conhecidos ---------- */
+    Store.reset();
+    var M1 = "2026-08", M2 = "2026-09", M3 = "2026-10";
+
+    function lanc(mk, dia, valor, desc) {
+      return Store.addTx({
+        type: "out", amount: valor,
+        date: mk + "-" + (dia < 10 ? "0" + dia : String(dia)),
+        catId: "out_outros", desc: desc
+      });
+    }
+
+    var a1 = lanc(M1, 5, 1000, "a1");
+    var a2 = lanc(M1, 6, 2000, "a2");
+    var b1 = lanc(M2, 7, 3000, "b1");
+    var b2 = lanc(M2, 8, 4000, "b2");
+    var b3 = lanc(M2, 9, 5000, "b3");
+    var c1 = lanc(M3, 10, 6000, "c1");
+
+    linhas.push("── base");
+    conf("criou 6 lançamentos em 3 meses",
+      Store.data.transactions.length === 6);
+    conf("lançamento novo nasce NÃO conferido", !a1.reconciledAt);
+    conf("reconciledAt é null (não undefined)",
+      Store.data.transactions.every(function (t) { return t.reconciledAt === null; }));
+
+    /* ---------- marcação individual ---------- */
+    linhas.push("");
+    linhas.push("── marcação individual");
+    Store.toggleReconcile(a1.id);
+    conf("marcar guarda uma data em reconciledAt",
+      typeof a1.reconciledAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a1.reconciledAt));
+    conf("a data é de hoje", a1.reconciledAt === new Date().toISOString().slice(0, 10));
+    conf("não mexeu no valor", a1.amount === 1000);
+    conf("não mexeu na categoria", a1.catId === "out_outros");
+    conf("não mexeu na data do lançamento", a1.date === "2026-08-05");
+    conf("o outro lançamento do mês continua limpo", !a2.reconciledAt);
+
+    Store.toggleReconcile(a1.id);
+    conf("chamar de novo DESFAZ (toggle)", a1.reconciledAt === null);
+
+    Store.toggleReconcile(a1.id, true);
+    conf("forçar true marca", !!a1.reconciledAt);
+    Store.toggleReconcile(a1.id, false);
+    conf("forçar false limpa", a1.reconciledAt === null);
+    Store.toggleReconcile(a1.id, true);
+
+    /* ---------- contador do mês ---------- */
+    linhas.push("");
+    linhas.push("── contador do mês");
+    var st1 = Store.reconcileStats(M1);
+    conf("stats devolve total/ok/falta",
+      st1.total === 2 && st1.ok === 1 && st1.falta === 1);
+    var st2 = Store.reconcileStats(M2);
+    conf("outro mês não foi contaminado", st2.total === 3 && st2.ok === 0 && st2.falta === 3);
+    conf("mês sem lançamento devolve zeros",
+      (function () { var s = Store.reconcileStats("2020-01"); return s.total === 0 && s.ok === 0; })());
+
+    /* ---------- marcação em massa ---------- */
+    linhas.push("");
+    linhas.push("── marcação em massa");
+    var n1 = Store.reconcileAll(M2, true);
+    conf("marcar todos devolve quantos mudaram", n1 === 3);
+    conf("marcou os 3 do mês", Store.reconcileStats(M2).ok === 3);
+    conf("o mês vizinho não mudou", Store.reconcileStats(M1).ok === 1);
+    conf("o mês seguinte não mudou", Store.reconcileStats(M3).ok === 0);
+
+    var n2 = Store.reconcileAll(M2, true);
+    conf("marcar todos de novo devolve 0 (nada mudou)", n2 === 0);
+
+    var n3 = Store.reconcileAll(M2, false);
+    conf("limpar devolve quantos mudaram", n3 === 3);
+    conf("limpou o mês inteiro", Store.reconcileStats(M2).ok === 0);
+    conf("não limpou o mês vizinho", Store.reconcileStats(M1).ok === 1);
+
+    /* ---------- parcelas ---------- */
+    linhas.push("");
+    linhas.push("── parcelas e exclusão");
+    var gid = "g_teste";
+    var p1 = Store.addTx({ type: "out", amount: 1500, date: "2026-10-20",
+      catId: "out_compras", desc: "Geladeira",
+      group: { gid: gid, n: 1, total: 12 } });
+    Store.toggleReconcile(p1.id, true);
+    conf("parcela marcada sem erro", !!p1.reconciledAt);
+    conf("stats contou a parcela", Store.reconcileStats(M3).ok === 1);
+
+    Store.removeTx(p1.id);
+    conf("excluir a parcela não quebra o contador",
+      Store.reconcileStats(M3).ok === 0);
+
+    conf("id inexistente não derruba", Store.toggleReconcile("tx_nao_existe") === null);
+
+    /* ---------- backup antigo: migração ---------- */
+    linhas.push("");
+    linhas.push("── backup antigo e migração");
+    var antigo = {
+      version: "1.4.0",
+      transactions: [
+        { id: "tx_ant_1", type: "out", value: 4550, date: "2026-08-10", catId: "out_outros", desc: "Mercado" },
+        { id: "tx_ant_2", type: "in",  value: 320000, date: "2026-08-05", catId: "in_outros", desc: "Salário" }
+      ],
+      settings: { initialBalance: 0 }
+    };
+    Store.importJSON(JSON.stringify(antigo));
+    var t1 = Store.tx("tx_ant_1");
+    conf("backup antigo ganha reconciledAt null",
+      t1 && t1.reconciledAt === null);
+    conf("o campo 'value' virou amount ao mesmo tempo",
+      t1 && t1.amount === 4550 && !("value" in t1));
+
+    /* ---------- backup que JÁ traz a marcação ---------- */
+    var comMarca = {
+      version: "1.13.0",
+      accounts: [{ id: "acc_x", type: "bank", opening: 0 }],
+      transactions: [
+        { id: "tx_m_1", type: "out", amount: 100, date: "2026-09-01",
+          catId: "out_outros", desc: "x", reconciledAt: "2026-09-15" },
+        { id: "tx_m_2", type: "out", amount: 200, date: "2026-09-02",
+          catId: "out_outros", desc: "y" }
+      ],
+      cards: [], third: [], transfers: [], settings: { initialBalance: 0 }
+    };
+    Store.importJSON(JSON.stringify(comMarca));
+    conf("marcação veio preservada do backup",
+      Store.tx("tx_m_1") && Store.tx("tx_m_1").reconciledAt === "2026-09-15");
+    conf("lançamento sem o campo virou null",
+      Store.tx("tx_m_2") && Store.tx("tx_m_2").reconciledAt === null);
+
+    /* backup com lixo no campo não pode passar adiante */
+    var comLixo = {
+      version: "1.13.0",
+      accounts: [{ id: "acc_y", type: "bank", opening: 0 }],
+      transactions: [
+        { id: "tx_l_1", type: "out", amount: 100, date: "2026-09-01",
+          catId: "out_outros", desc: "z", reconciledAt: 12345 }
+      ],
+      cards: [], third: [], transfers: [], settings: { initialBalance: 0 }
+    };
+    Store.importJSON(JSON.stringify(comLixo));
+    conf("reconciledAt que não é texto vira null",
+      Store.tx("tx_l_1") && Store.tx("tx_l_1").reconciledAt === null);
+
+    /* ---------- exportar/importar (ida e volta) ----------
+       ATENÇÃO: o importJSON TROCA o objeto db inteiro — as referências
+       a1/a2/b1... criadas acima viram órfãs. Por isso esta seção cria
+       um lançamento novo na mão, em vez de reaproveitar os antigos. */
+    linhas.push("");
+    linhas.push("── exportar e importar de volta");
+    var novo = Store.addTx({ type: "out", amount: 777, date: "2026-11-05",
+      catId: "out_outros", desc: "para exportar" });
+    conf("criou o lançamento de prova", Store.tx(novo.id) === novo);
+    conf("nasceu não conferido", !novo.reconciledAt);
+
+    Store.toggleReconcile(novo.id, true);
+    conf("consegue marcar", !!Store.tx(novo.id).reconciledAt);
+    var marcada = Store.tx(novo.id).reconciledAt;
+
+    var exportado = Store.exportJSON ? Store.exportJSON() : JSON.stringify(Store.data);
+    var temp = JSON.parse(exportado);
+    var marcadosAntes = temp.transactions.filter(function (t) { return !!t.reconciledAt; }).length;
+    conf("o export traz o campo reconciledAt", marcadosAntes > 0);
+    conf("o export traz a data certa",
+      temp.transactions.some(function (t) {
+        return t.id === novo.id && t.reconciledAt === marcada;
+      }));
+    Store.importJSON(exportado);
+    var marcadosDepois = Store.data.transactions.filter(function (t) { return !!t.reconciledAt; }).length;
+    conf("importar de volta mantém a contagem", marcadosAntes === marcadosDepois);
+    conf("a marcação voltou com a MESMA data",
+      Store.tx(novo.id) && Store.tx(novo.id).reconciledAt === marcada);
+
+  } catch (e) {
+    falhas++;
+    linhas.push("");
+    linhas.push("❌ parou no meio: " + (e && e.message ? e.message : e));
+    if (e && e.stack) linhas.push(String(e.stack).split("\n").slice(0, 3).join("\n"));
+  }
+
+  /* devolve o estado de antes */
+  try {
+    Store.importJSON(JSON.stringify(antes));
+    linhas.push("");
+    linhas.push("(dados de antes restaurados ✓)");
+  } catch (e) {
+    linhas.push("");
+    linhas.push("(não deu para restaurar — " + e.message + ")");
+  }
+  if (typeof window.__devolverSessao === "function") window.__devolverSessao();
+
+  linhas.push("");
+  linhas.push("total: " + ok + " ok · " + falhas + " falha(s)");
+  saida.textContent = linhas.join("\n");
+  btn.disabled = false;
+};
+</script>
+</body>
+</html>

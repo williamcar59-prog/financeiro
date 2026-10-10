@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>teste: importar backups antigos</title></head>
+<body>
+<h1>Teste — importar backups de versões antigas</h1>
+<p>Confere se um backup exportado numa versão antiga do app ainda é importado
+   certo na atual (v1.12.0). Roda o <code>Store.importJSON</code> de verdade.</p>
+<button id="rodar">Rodar o teste</button>
+<pre id="saida">(clique no botão)</pre>
+<script>
+/* =====================================================================
+   BLINDAGEM DE SESSÃO
+   Esta página roda na MESMA origem do app — se você estiver logado, o
+   store.js carregaria a sessão de verdade e o Store.importJSON() poderia
+   empurrar os dados de teste para a sua nuvem. Escondemos a chave de
+   sessão enquanto o teste roda e devolvemos no fim.
+   ===================================================================== */
+(function () {
+  var CHAVE = "fin_session_v1";
+  try {
+    var guardada = sessionStorage.getItem("sessao_guardada_pelo_teste");
+    if (guardada === null && localStorage.getItem(CHAVE) !== null) {
+      sessionStorage.setItem("sessao_guardada_pelo_teste", localStorage.getItem(CHAVE));
+      localStorage.removeItem(CHAVE);
+    }
+    window.addEventListener("beforeunload", devolver);
+  } catch (e) { /* sem storage (modo privado?): segue sem blindar */ }
+
+  function devolver() {
+    try {
+      var g = sessionStorage.getItem("sessao_guardada_pelo_teste");
+      if (g !== null) {
+        localStorage.setItem(CHAVE, g);
+        sessionStorage.removeItem("sessao_guardada_pelo_teste");
+      }
+    } catch (e) { /* nada a fazer */ }
+  }
+  window.__devolverSessao = devolver;
+})();
+</script>
+<script src="../store.js"></script>
+<script>
+/* guardas: o teste roda com a sessão escondida (ver o bloco de blindagem
+   acima), então ele NUNCA toca nos dados da nuvem. Ainda assim avisamos. */
+var sessaoVisivel = false;
+try { sessaoVisivel = localStorage.getItem("fin_session_v1") !== null; } catch (e) {}
+if (sessaoVisivel) {
+  document.getElementById("saida").textContent =
+    "⚠️ A sessão não foi escondida — saia da sua conta ou use a conta de teste.";
+}
+
+const FIXTURES = [
+  {
+    ar: "backups-antigos/v1-4-0.json",
+    rot: "v1.4.0 — sem contas, sem cartões, campo 'value', saldo inicial em settings",
+    testes: [
+      ["importou os 6 lançamentos", function (r) { return r.tx === 6; }],
+      ["criou contas padrão (o backup não tinha)", function (r) { return Store.data.accounts.length >= 1; }],
+      ["saldo inicial foi para a conta (não ficou em settings)", function (r) {
+        return Store.data.settings.initialBalance === 0 &&
+               Store.data.accounts.some(function (a) { return a.opening === 150000; });
+      }],
+      ["'value' virou 'amount' (sem R$ NaN)", function (r) {
+        return Store.data.transactions.every(function (t) {
+          return typeof t.amount === "number" && t.amount > 0 && !("value" in t);
+        });
+      }],
+      ["valor de um lançamento preservado", function (r) {
+        var t = Store.data.transactions.find(function (x) { return x.id === "tx_v4_1"; });
+        return t && t.amount === 320000;
+      }],
+      ["sem cartões nem terceiros", function (r) {
+        return Store.data.cards.length === 0 && Store.data.third.length === 0;
+      }]
+    ]
+  },
+  {
+    ar: "backups-antigos/v1-6-0.json",
+    rot: "v1.6.0 — cartões sem 'kind', terceiros com who/desc/value/paid",
+    testes: [
+      ["importou os 5 lançamentos", function (r) { return r.tx === 5; }],
+      ["cartão ganhou kind='credito' por padrão", function (r) {
+        return Store.data.cards.length === 1 && Store.data.cards[0].kind === "credito";
+      }],
+      ["terceiro: 'who' virou 'person'", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v6_1"; });
+        return t && t.person === "João" && !("who" in t);
+      }],
+      ["terceiro: 'desc' virou 'note'", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v6_1"; });
+        return t && t.note === "Jantar" && !("desc" in t);
+      }],
+      ["terceiro: 'value' virou 'amount'", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v6_1"; });
+        return t && t.amount === 45000 && !("value" in t);
+      }],
+      ["terceiro: paid=false virou status='open'", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v6_1"; });
+        return t && t.status === "open" && !("paid" in t);
+      }],
+      ["terceiro: paid=true virou status='paid' + paidAt", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v6_2"; });
+        return t && t.status === "paid" && !!t.paidAt;
+      }],
+      ["parcelas do grupo mantidas (gid/n/total)", function (r) {
+        var g = Store.data.transactions.filter(function (t) { return t.group && t.group.gid === "g_v6_1"; });
+        return g.length === 2 && g[0].group.total === 12;
+      }]
+    ]
+  },
+  {
+    ar: "backups-antigos/v1-10-0.json",
+    rot: "v1.10.0 — kind nos cartões, transferências, categorias faltando",
+    testes: [
+      ["importou os 6 lançamentos", function (r) { return r.tx === 6; }],
+      ["3 cartões, cada um com o seu kind", function (r) {
+        var ks = Store.data.cards.map(function (c) { return c.kind; }).sort();
+        return Store.data.cards.length === 3 &&
+               ks.join(",") === "credito,emprestimo,vale";
+      }],
+      ["transferência importada", function (r) {
+        return Store.data.transfers.length === 1 && Store.data.transfers[0].amount === 100000;
+      }],
+      ["categorias faltantes foram anexadas", function (r) {
+        /* o fixture só trazia 3 categorias; as padrão precisam completar */
+        return Store.data.categories.length > 3 &&
+               Store.data.categories.some(function (c) { return c.id === "out_lazer"; }) &&
+               Store.data.categories.some(function (c) { return c.id === "in_freela"; });
+      }],
+      ["categorias originais preservadas na ordem", function (r) {
+        return Store.data.categories[0].id === "out_moradia";
+      }],
+      ["vale e empréstimo mantiveram o kind (não viraram crédito)", function (r) {
+        var v = Store.data.cards.find(function (c) { return c.id === "card_v10_2"; });
+        var e = Store.data.cards.find(function (c) { return c.id === "card_v10_3"; });
+        return v && v.kind === "vale" && e && e.kind === "emprestimo";
+      }],
+      ["terceiro com status='paid' e paidAt preservados", function (r) {
+        var t = Store.data.third.find(function (x) { return x.id === "td_v10_2"; });
+        return t && t.status === "paid" && t.paidAt === "2026-10-22";
+      }],
+      ["fatura do mês bate com o esperado", function (r) {
+        /* outubro/2026: Itaú = mercado 623,40 + terceiros João 450 + Maria 125 */
+        var inv = Store.cardInvoice("card_v10_1", "2026-10");
+        return inv.total === 62340 + 45000 + 12500 && inv.others === 45000 + 12500;
+      }]
+    ]
+  },
+  {
+    ar: "backups-antigos/v1-4-0.json",
+    rot: "degradação — arquivo corrompido (JSON inválido e 'não é backup')",
+    esperaErro: true,
+    testes: [
+      ["JSON inválido é recusado", null],
+      ["objeto sem 'transactions' é recusado", null]
+    ]
+  }
+];
+
+function ler(ar) {
+  return fetch(ar, { cache: "no-store" }).then(function (r) { return r.json(); });
+}
+
+document.getElementById("rodar").onclick = function () {
+  var btn = this, saida = document.getElementById("saida");
+  btn.disabled = true; saida.textContent = "Rodando...";
+  var totalOk = 0, totalFalhas = 0, linhas = [];
+
+  /* snapshot do que estava antes, para restaurar no fim */
+  var antes = JSON.parse(JSON.stringify(Store.data || {}));
+
+  var cadeia = Promise.resolve();
+
+  FIXTURES.forEach(function (fx) {
+    cadeia = cadeia.then(function () {
+      /* caso 4: arquivos que DEVEM falhar (testados à parte) */
+      if (fx.esperaErro) {
+        var casos = [
+          ["JSON inválido", "{isso não é json"],
+          ["sem transactions", '{"version":"1.4.0","foo":1}'],
+          ["não parece backup", '{"transactions":"não é lista"}'],
+          ["vazio", ""]
+        ];
+        casos.forEach(function (c) {
+          var recusou = false;
+          try { Store.importJSON(c[1]); } catch (e) { recusou = true; }
+          if (recusou) { totalOk++; linhas.push("  ✅ recusou: " + c[0]); }
+          else { totalFalhas++; linhas.push("  ❌ ACEITOU arquivo ruim: " + c[0]); }
+        });
+        linhas.push("");
+        return;
+      }
+      return ler(fx.ar).then(function (json) {
+        var r = Store.importJSON(JSON.stringify(json));
+        linhas.push("── " + fx.rot);
+        fx.testes.forEach(function (t) {
+          var okk = false, erro = null;
+          try { okk = !!t[1](r); } catch (e) { erro = String(e && e.message || e); }
+          if (okk) { totalOk++; linhas.push("  ✅ " + t[0]); }
+          else { totalFalhas++; linhas.push("  ❌ " + t[0] + (erro ? "  (" + erro + ")" : "")); }
+        });
+        linhas.push("");
+      });
+    });
+  });
+
+  cadeia.then(function () {
+    /* devolve o estado de antes — o teste não deixa sujeira */
+    try {
+      Store.importJSON(JSON.stringify(antes));
+      linhas.push("(dados de antes restaurados ✓)");
+    } catch (e) {
+      linhas.push("(não deu para restaurar o estado de antes — " + e.message + ")");
+    }
+    /* devolve a sessão que a blindagem escondeu */
+    if (typeof window.__devolverSessao === "function") window.__devolverSessao();
+    linhas.push("");
+    linhas.push("total: " + totalOk + " ok · " + totalFalhas + " falha(s)");
+    saida.textContent = linhas.join("\n");
+    btn.disabled = false;
+  }).catch(function (e) {
+    saida.textContent = "❌ parou no meio: " + (e && e.message ? e.message : e) + "\n\n" + linhas.join("\n");
+    btn.disabled = false;
+  });
+};
+</script>
+</body>
+</html>
