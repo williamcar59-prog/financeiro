@@ -78,6 +78,40 @@ o backup é de uma versão antiga (o campo não existe — vira null).
 
 ---
 
+## 🛒 `_teste_ciclo.html` — ciclo da fatura e data da compra
+
+Abra `http://localhost:8765/testes/_teste_ciclo.html` e clique em
+**"Rodar o teste"**.
+
+Confere o cálculo de **fechamento/vencimento** do cartão de crédito
+(`Store.cicloFatura`) e o campo **`boughtAt`** (data da compra) que a
+v1.14.0 passou a guardar.
+
+Cobre justamente o caso do bug real — cartão que **fecha dia 22 e vence
+dia 5**: a compra de dia 25 perde o fechamento e cai na fatura seguinte,
+e a data digitada precisa sobreviver à gravação em vez de ser apagada.
+
+| Bloco | O que confere |
+|---|---|
+| ciclo fecha 22 / vence 5 | cada data de compra cai na fatura certa |
+| invariantes | vencimento sempre depois do fechamento; dia do fechamento e do vencimento nunca variam |
+| ciclo fecha 1 / vence 5 e fecha 3 / vence 10 | os outros dois formatos de cartão |
+| quem não tem fatura | vale (VR/VA), cartão inexistente e data inválida → `null` |
+| `boughtAt` | nasce `null`; ao lançar no cartão a data da compra fica guardada e `date` vira o vencimento |
+| registro antigo | sem `boughtAt`, `dataCompra()` cai na própria `date` e nada aparece na tela |
+| `migrate()` | backup sem o campo ganha `boughtAt: null`, e o campo viaja no export |
+| dia 31 | fechamento encurta em meses de 30 dias e atravessa o ano |
+
+**Resultado esperado:** `total: 40 ok · 0 falha(s)`.
+
+> 📌 **Uma asserção que enganou quem escreveu o teste:** comprar **no dia
+> do vencimento** (05/11) num cartão que fecha dia 22 **não** fica naquela
+> fatura — ela já tinha fechado no dia 22/10, então a compra entra na de
+> 22/11 e vence 05/12. A conta bancária está certa; quem errava era a
+> expectativa.
+
+---
+
 ## 📄 `_teste_relatorio.html` — o relatório em PDF
 
 Abra `http://localhost:8765/_teste_relatorio.html` (na raiz) e clique em
@@ -130,6 +164,7 @@ dá para reaproveitar quando for mexer no código:
 | `backups-antigos/*.json` | 3 fixtures de formato antigo (v1.4.0, v1.6.0, v1.10.0) |
 | `_teste_importacao.html` | teste de importação de backups antigos (26 verificações) |
 | `_teste_conciliacao.html` | teste da conciliação com o extrato (39 verificações) |
+| `_teste_ciclo.html` | teste do ciclo da fatura e da data da compra (40 verificações) |
 | `_teste_relatorio.html` | teste do relatório em PDF (19 verificações) |
 | `_gera_manual.html` | gerador do `MANUAL/manual-do-app.pdf` |
 | `README.md` | este arquivo |

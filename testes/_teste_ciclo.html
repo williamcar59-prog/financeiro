@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>teste: ciclo da fatura e data da compra</title></head>
+<body>
+<h1>Teste — ciclo da fatura e data da compra (v1.14.0)</h1>
+<p>Confere o cálculo de <b>fechamento/vencimento</b> do cartão de crédito e o
+   campo <b>boughtAt</b> (data da compra) que a v1.14.0 passou a guardar.</p>
+<p>Cobre o caso real do bug: cartão que <b>fecha dia 22 e vence dia 5</b> —
+   a compra de dia 25 pula a fatura e cai na seguinte, e a data digitada
+   precisa sobreviver à gravação.</p>
+<button id="rodar">Rodar o teste</button>
+<pre id="saida">(clique no botão)</pre>
+
+<script>
+/* =====================================================================
+   BLINDAGEM DE SESSÃO (igual à da página de importação)
+   Esconde a chave enquanto o teste roda e devolve no fim — assim nada
+   aqui empurra para a nuvem de verdade.
+   ===================================================================== */
+(function () {
+  var CHAVE = "fin_session_v1";
+  try {
+    var guardada = sessionStorage.getItem("sessao_guardada_pelo_teste");
+    if (guardada === null && localStorage.getItem(CHAVE) !== null) {
+      sessionStorage.setItem("sessao_guardada_pelo_teste", localStorage.getItem(CHAVE));
+      localStorage.removeItem(CHAVE);
+    }
+    window.addEventListener("beforeunload", devolver);
+  } catch (e) { /* sem storage: segue sem blindar */ }
+
+  function devolver() {
+    try {
+      var g = sessionStorage.getItem("sessao_guardada_pelo_teste");
+      if (g !== null) {
+        localStorage.setItem(CHAVE, g);
+        sessionStorage.removeItem("sessao_guardada_pelo_teste");
+      }
+    } catch (e) { /* nada a fazer */ }
+  }
+  window.__devolverSessao = devolver;
+})();
+</script>
+<script src="../store.js"></script>
+<script>
+var sessaoVisivel = false;
+try { sessaoVisivel = localStorage.getItem("fin_session_v1") !== null; } catch (e) {}
+if (sessaoVisivel) {
+  document.getElementById("saida").textContent =
+    "⚠️ A sessão não foi escondida — saia da sua conta ou use a conta de teste.";
+}
+
+var ok = 0, falhas = 0, linhas = [];
+function conf(nome, cond) {
+  if (cond) { ok++; linhas.push("  ✅ " + nome); }
+  else { falhas++; linhas.push("  ❌ " + nome); }
+}
+function isoCurto(d) {
+  return d ? d.slice(0, 10) : null;
+}
+
+document.getElementById("rodar").onclick = function () {
+  var btn = this, saida = document.getElementById("saida");
+  btn.disabled = true; saida.textContent = "Rodando...";
+  ok = 0; falhas = 0; linhas = [];
+
+  /* estado de antes, para não deixar sujeira */
+  var antes = JSON.parse(JSON.stringify(Store.data || {}));
+
+  try {
+    Store.reset();
+
+    /* =================================================================
+       1. CICLO — o cartão do bug: fecha 22, vence 5
+       ================================================================= */
+    linhas.push("── ciclo: fecha dia 22, vence dia 5");
+    var c22 = Store.addCard({ kind: "credito", name: "Cartao22", final: "9999",
+                              closing: 22, due: 5, limit: 0 });
+
+    var r = Store.cicloFatura(c22.id, "2026-09-15");
+    conf("compra dia 15 entra na fatura que fecha 22/09", r && r.fecha === "2026-09-22");
+    conf("  ...e vence 05/10", r && r.vence === "2026-10-05");
+
+    r = Store.cicloFatura(c22.id, "2026-09-25");
+    conf("compra dia 25 PERDE o fechamento do dia 22", r && r.fecha === "2026-10-22");
+    conf("  ...e vence 05/11 (não 05/10)", r && r.vence === "2026-11-05");
+
+    r = Store.cicloFatura(c22.id, "2026-10-03");
+    conf("compra dia 03/10 cai na fatura de 22/10", r && r.fecha === "2026-10-22");
+    conf("  ...vence 05/11", r && r.vence === "2026-11-05");
+
+    r = Store.cicloFatura(c22.id, "2026-10-22");
+    conf("compra NO dia do fechamento ainda entra nela (>= )", r && r.fecha === "2026-10-22");
+
+    r = Store.cicloFatura(c22.id, "2026-10-25");
+    conf("compra dia 25/10 vai para a fatura de 22/11", r && r.fecha === "2026-11-22");
+    conf("  ...vence 05/12", r && r.vence === "2026-12-05");
+
+    linhas.push("");
+    linhas.push("── invariantes do ciclo");
+    var datas = ["2026-09-01", "2026-09-15", "2026-09-22", "2026-09-23",
+                 "2026-10-05", "2026-10-22", "2026-10-23", "2026-11-30"];
+    conf("o vencimento é SEMPRE depois do fechamento",
+      datas.every(function (d) {
+        var x = Store.cicloFatura(c22.id, d);
+        return x && x.vence > x.fecha;
+      }));
+    conf("a fatura sempre fecha no dia 22",
+      datas.every(function (d) {
+        var x = Store.cicloFatura(c22.id, d);
+        return x && Number(x.fecha.slice(8, 10)) === 22;
+      }));
+    conf("o vencimento sempre cai no dia 05",
+      datas.every(function (d) {
+        var x = Store.cicloFatura(c22.id, d);
+        return x && Number(x.vence.slice(8, 10)) === 5;
+      }));
+    conf("compra no dia do vencimento cai na fatura SEGUINTE — o cartão já tinha fechado no dia 22",
+      Store.cicloFatura(c22.id, "2026-11-05").vence === "2026-12-05");
+
+    /* =================================================================
+       2. CICLO — fechamento antes do vencimento (mesmo mês)
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── ciclo: fecha dia 1, vence dia 5");
+    var c1 = Store.addCard({ kind: "credito", name: "Cartao1", final: "1111",
+                             closing: 1, due: 5, limit: 0 });
+    r = Store.cicloFatura(c1.id, "2026-09-25");
+    conf("compra dia 25/09 entra no fechamento de 01/10", r && r.fecha === "2026-10-01");
+    conf("  ...vence 05/10", r && r.vence === "2026-10-05");
+
+    linhas.push("");
+    linhas.push("── ciclo: fecha dia 3, vence dia 10 (mês igual)");
+    var c3 = Store.addCard({ kind: "credito", name: "Cartao3", final: "3333",
+                             closing: 3, due: 10, limit: 0 });
+    r = Store.cicloFatura(c3.id, "2026-10-03");
+    conf("compra no próprio dia do fechamento fica nele", r && r.fecha === "2026-10-03");
+    conf("  ...vence 10/10 (vencimento DEPOIS do fechamento = mesmo mês)",
+      r && r.vence === "2026-10-10");
+
+    /* =================================================================
+       3. CICLO — o que NÃO tem fatura
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── ciclo: quem não tem fatura");
+    var vale = Store.addCard({ kind: "vale", name: "ValeVR", sub: "vr",
+                               credito: 50000, closing: 1, due: 1 });
+    conf("vale (VR/VA) não tem ciclo de fatura",
+      Store.cicloFatura(vale.id, "2026-10-03") === null);
+    conf("cartão inexistente devolve null",
+      Store.cicloFatura("card_nadaaqui", "2026-10-03") === null);
+    conf("data inválida devolve null",
+      Store.cicloFatura(c3.id, "abc") === null);
+
+    /* =================================================================
+       4. DATA DA COMPRA (boughtAt) — o coração do fix
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── data da compra (boughtAt)");
+    var t = Store.addTx({ type: "out", amount: 50000, date: "2026-09-25",
+                          catId: "out_outros", cardId: c22.id });
+    conf("lançamento novo nasce com boughtAt null", t.boughtAt === null);
+    conf("  ...null de verdade, não undefined", "boughtAt" in t);
+
+    /* simula o que o app.js faz ao lançar no cartão */
+    var ciclo = Store.cicloFatura(t.cardId, t.date);
+    t.boughtAt = t.date;
+    t.date = ciclo.vence;
+
+    conf("a data da compra ficou guardada em boughtAt", t.boughtAt === "2026-09-25");
+    conf("date virou o vencimento da fatura", t.date === "2026-11-05");
+    conf("dataCompra() devolve o dia da compra",
+      Store.dataCompra(t) === "2026-09-25");
+    conf("compraDifere() é true (as duas datas são diferentes)",
+      Store.compraDifere(t) === true);
+
+    linhas.push("");
+    linhas.push("── data da compra: registro antigo (sem boughtAt)");
+    var antigo = Store.addTx({ type: "out", amount: 1000, date: "2026-10-10",
+                               catId: "out_outros" });
+    conf("sem boughtAt, dataCompra() cai na própria date",
+      Store.dataCompra(antigo) === "2026-10-10");
+    conf("compraDifere() é false — nada a mostrar na tela",
+      Store.compraDifere(antigo) === false);
+
+    /* boughtAt igual a date: não difere, não mostra pill */
+    var igual = Store.addTx({ type: "out", amount: 1000, date: "2026-10-10",
+                              catId: "out_outros", boughtAt: "2026-10-10" });
+    conf("boughtAt igual a date: compraDifere() é false",
+      Store.compraDifere(igual) === false);
+
+    /* =================================================================
+       5. TERCEIROS — mesma regra
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── terceiros");
+    var td = Store.addThird({ person: "Maria", amount: 30000, date: "2026-10-03",
+                              cardId: c22.id });
+    conf("terceiro novo nasce com boughtAt null", td.boughtAt === null);
+    var ciclo3 = Store.cicloFatura(td.cardId, td.date);
+    td.boughtAt = td.date;
+    td.date = ciclo3.vence;
+    conf("terceiro guarda a data da compra", td.boughtAt === "2026-10-03");
+    conf("  ...e a parcela vence no ciclo certo", td.date === "2026-11-05");
+    conf("dataCompra() do terceiro devolve a compra",
+      Store.dataCompra(td) === "2026-10-03");
+
+    /* =================================================================
+       6. MIGRATE — backup antigo ganha boughtAt null
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── migrate: backup antigo");
+    var exportado = JSON.parse(Store.exportJSON());
+    delete exportado.transactions[0].boughtAt;
+    delete exportado.transactions[1].boughtAt;
+    delete exportado.third[0].boughtAt;
+    Store.importJSON(JSON.stringify(exportado));
+
+    /* O importJSON TROCA o objeto db inteiro — releia por id, não guarde
+       referência velha. */
+    var tudoComCampo = Store.data.transactions.every(function (x) {
+      return "boughtAt" in x;
+    }) && Store.data.third.every(function (x) {
+      return "boughtAt" in x;
+    });
+    conf("depois do migrate TODOS os registros têm boughtAt", tudoComCampo);
+    conf("os que não tinham viraram null (não undefined)",
+      Store.data.transactions.filter(function (x) { return x.boughtAt === null; }).length >= 2);
+
+    /* round-trip: exportar de novo e conferir que o campo viaja */
+    var exportado2 = JSON.parse(Store.exportJSON());
+    conf("boughtAt viaja no export (backup)",
+      exportado2.transactions.every(function (x) { return "boughtAt" in x; }));
+
+    /* =================================================================
+       7. DIA 31 em mês de 30 dias (fechamento não pode estourar)
+       ================================================================= */
+    linhas.push("");
+    linhas.push("── fechamento dia 31 em mês de 30 dias");
+    var c31 = Store.addCard({ kind: "credito", name: "Cartao31", final: "4444",
+                              closing: 31, due: 10, limit: 0 });
+    r = Store.cicloFatura(c31.id, "2026-04-10");
+    conf("abril (30 dias): fecha encurta para 30/04", r && r.fecha === "2026-04-30");
+    conf("  ...e vence 10/05", r && r.vence === "2026-05-10");
+
+    linhas.push("");
+    linhas.push("── fechamento dia 31 cruzando o ano");
+    r = Store.cicloFatura(c31.id, "2026-12-15");
+    conf("compra em dezembro fecha em 31/12", r && r.fecha === "2026-12-31");
+    conf("  ...vence 10/01 do ano seguinte", r && r.vence === "2027-01-10");
+  } catch (e) {
+    linhas.push("");
+    linhas.push("❌ parou no meio: " + (e && e.message ? e.message : e));
+    if (e && e.stack) linhas.push(String(e.stack).split("\n").slice(0, 3).join("\n"));
+  }
+
+  /* devolve o estado de antes */
+  try {
+    Store.importJSON(JSON.stringify(antes));
+    linhas.push("");
+    linhas.push("(dados de antes restaurados ✓)");
+  } catch (e) {
+    linhas.push("");
+    linhas.push("(não deu para restaurar — " + e.message + ")");
+  }
+  if (typeof window.__devolverSessao === "function") window.__devolverSessao();
+
+  linhas.push("");
+  linhas.push("total: " + ok + " ok · " + falhas + " falha(s)");
+  saida.textContent = linhas.join("\n");
+  btn.disabled = false;
+};
+</script>
+</body>
+</html>
