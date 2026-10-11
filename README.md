@@ -685,6 +685,66 @@ foi no seu cartão, está marcado: *"João — no seu cartão R$ 450,00"*.
 > e uma compra parcelada → toque no botão do PDF → abra o arquivo. Devem
 > aparecer a tabela com as parcelas (ex.: `3/10`) e a seção das faturas.
 
+### 🛒 Compra guardada com as DUAS datas (v1.14.0)
+
+**O bug mais chato do app:** você registrava uma compra no cartão e ela
+aparecia no mês errado — ou nem aparecia. Com um cartão que **fecha dia 22 e
+vence dia 5**, uma compra feita dia 25 virava registro de **novembro** e sumia
+de vista.
+
+**Por que acontecia:** no cartão de crédito a parcela nasce no **vencimento
+da fatura** (é quando o dinheiro sai da conta) — e o app estava **apagando a
+data da compra** no processo. Só ficava o vencimento.
+
+**Agora as duas ficam guardadas:**
+
+- `boughtAt` = o dia em que a compra foi feita (o que você digitou)
+- `date` = o vencimento da parcela (o dia que o caixa desconta)
+
+Aparecem juntas na lista — um pill verde **`comp. 25/09`** ao lado do valor
+— e no formulário de edição, num recado que explica as duas datas.
+
+**O cartão também parou de mentir.** A ficha mostrava *"Fechamento 22/10 ·
+Vencimento 05/10"* — vencimento **antes** de a fatura fechar. Agora diz
+*"Fechamento 22/10 · Vencimento **05/11**"*, que é a conta certa.
+
+> 📌 **Registros antigos não ganham a data da compra** — ela não existe mais,
+> e inventar seria pior. O `migrate()` grava `null` e a tela continua
+> mostrando só o vencimento, como antes. Tudo o que for lançado daqui pra
+> frente já nasce com as duas.
+
+### 🔗 Cartão dentro do link de terceiro (v1.14.0)
+
+Antes o link de terceiro trazia **valor, parcelas, data e descrição** — mas
+**não o cartão**. Quem recebia abria o app com *"— sem cartão —"* e tinha que
+escolher toda vez (e, se esquecesse, as parcelas viravam **um registro só**).
+
+- **`terceiro.html`** ganhou o campo **"Cartão usado — 4 últimos números"**
+  (opcional). São os dígitos que estão impressos no plástico, então o
+  terceiro enxerga sem precisar perguntar.
+- O link passou a levar `cf=9999`. Quem recebe **já abre com o cartão certo
+  selecionado** — se nenhum bater, continua em *"— sem cartão —"* como
+  antes, e dá para trocar.
+- O resumo do link agora mostra o cartão: *"R$ 900,00 em 2x · 05/10/2026 ·
+  cartão •9999"*.
+
+**Só os 4 últimos dígitos, nunca o número completo.** É o mesmo princípio de
+sempre: o link não leva dado que comprometa o cartão.
+
+### 📥 Na tela de receber ficou sem confusão
+
+A folha de receber o QR agora diz **"Data da compra"** (não mais *"Data"*),
+mostra **"Total · parcelas R$ 900,00 em 2x"** e um recado explícito:
+*"Cada parcela: R$ 450,00 · total da compra R$ 900,00"*.
+
+Assim não dá para confundir o valor da parcela com o valor da compra — o
+total está escrito em dois lugares.
+
+> 🔎 Para conferir: crie um cartão com **fechamento 22 / vencimento 5**, lance
+> uma compra datada dia 25 → ela aparece na lista com o pill `comp. 25/09` e
+> no mês do vencimento. Depois toque em **📤 Compartilhar com terceiro** e veja
+> o `cf=` no link.
+
 ### ✔ Conferir com o extrato (v1.13.0)
 
 Fim de mês e o extrato do banco está na sua mão, mas o app não mostra se

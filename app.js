@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.13.0";
+  const APP_VERSION = "1.14.0";
   const BUILD_DATE = "10/10/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -69,6 +69,25 @@
   function fullDate(iso) {
     const [y, m, d] = iso.split("-");
     return d + "/" + m + "/" + y;
+  }
+  /* data curta DD/MM — os pills da v1.14.0 mostram a compra e o vencimento
+     lado a lado, e o ano só polui ali */
+  function ddmmaa(iso) {
+    return typeof iso === "string" && iso.length >= 10
+      ? iso.slice(8, 10) + "/" + iso.slice(5, 7)
+      : "";
+  }
+  /* v1.14.0 — aviso ao editar uma parcela de cartão: a compra foi feita em
+     um dia e a parcela vence em outro. Mostra os dois sem obrigar ninguém a
+     adivinhar por que a data não é a que foi digitada. */
+  function infoCompra(t) {
+    if (!t || !Store.compraDifere(t)) return "";
+    return (
+      '<div class="ciclo">🛒 Comprado em <b>' + esc(fullDate(Store.dataCompra(t))) +
+      "</b> · esta parcela <b>vence em " + esc(fullDate(t.date)) +
+      "</b>. O caixa desconta no vencimento da fatura — a data da compra fica " +
+      "guardada junto (é ela que viaja no link de terceiro).</div>"
+    );
   }
   function catIcon(id) {
     const c = Store.cat(id);
@@ -766,6 +785,10 @@
     /* parcelada: mostra também o valor TOTAL da compra ao lado da parcela */
     if (t.group)
       sub.push('<span class="pill total-pill">total ' + fmt(Store.groupTotal(t)) + "</span>");
+    /* v1.14.0: compra feita em outro dia do vencimento — mostra os dois */
+    if (Store.compraDifere(t))
+      sub.push('<span class="pill bought-pill" title="Dia da compra">comp. ' +
+        ddmmaa(Store.dataCompra(t)) + "</span>");
 
     return (
       '<button class="row-item" data-act="edit-tx" data-id="' + t.id + '">' +
@@ -1027,8 +1050,15 @@
     const pct = c.limit > 0 ? Math.min(100, Math.round((used / c.limit) * 100)) : 0;
     const available = c.limit > 0 ? c.limit - used : null;
     const [y, m] = mk.split("-").map(Number);
-    const dClose = new Date(y, m - 1, Math.min(Number(c.closing) || 1, 28));
-    const dDue = new Date(y, m - 1, Math.min(Number(c.due) || 1, 28));
+    /* v1.14.0: a fatura rotulada pelo mês é a que VENCE nele. Quando o
+       vencimento cai antes do fechamento (fecha 22, vence 5) o fechamento é
+       no mês ANTERIOR. Antes os dois eram calculados no mesmo mês e o cartão
+       mostrava "Fechamento 22/10 · Vencimento 05/10" — vencimento antes de a
+       fatura fechar. */
+    const diaClose = Math.min(Number(c.closing) || 1, 28);
+    const diaDue = Math.min(Number(c.due) || 10, 28);
+    const dClose = new Date(y, (diaDue > diaClose ? m : m - 1) - 1, diaClose);
+    const dDue = new Date(y, m - 1, diaDue);
 
     return (
       abrir +
@@ -1153,12 +1183,21 @@
         ? Store.cards().filter((c) => Store.cardKind(c) === "credito")
         : pagaveis();
     const precisaCartao = qr.p > 1 && cards.length > 0;
+    /* v1.14.0: o link pode trazer os 4 últimos números do cartão (é o que
+       está impresso no plástico, então o terceiro conhece). Procura nos
+       SEUS cartões; não achou, continua em "— sem cartão —" como antes. */
+    const cfAlvo = qr.cf || "";
+    const achouCartao = cfAlvo
+      ? cards.find((c) => c.final && String(c.final).replace(/\D/g, "") === cfAlvo)
+      : null;
     const cardOpts =
       '<option value="">— sem cartão —</option>' +
       cards
         .map(
           (c) =>
-            '<option value="' + c.id + '">' + esc(cardLabel(c)) + "</option>"
+            '<option value="' + c.id + '"' +
+            (achouCartao && achouCartao.id === c.id ? " selected" : "") +
+            ">" + esc(cardLabel(c)) + "</option>"
         )
         .join("");
 
@@ -1167,12 +1206,20 @@
       '<div class="label">📥 Gasto recebido por QR Code</div>' +
       '<div class="value">' + fmt(qr.v) + "</div>" +
       '<div class="row">' +
-      '<div><div class="k"><i class="dot y"></i>Data</div><div class="v">' + esc(fullDate(qr.dt)) + "</div></div>" +
-      '<div><div class="k"><i class="dot g"></i>Parcelas</div><div class="v">' +
-      (qr.p > 1 ? qr.p + "x" : "à vista") + "</div></div>" +
+      '<div><div class="k"><i class="dot y"></i>Data da compra</div><div class="v">' + esc(fullDate(qr.dt)) + "</div></div>" +
+      '<div><div class="k"><i class="dot g"></i>Total · parcelas</div><div class="v">' +
+      (qr.p > 1 ? fmt(qr.v) + " em " + qr.p + "x" : "à vista") + "</div></div>" +
       "</div>" +
+      (qr.p > 1
+        ? '<div class="hero-geral">Cada parcela: <b>' + fmt(Math.floor(qr.v / qr.p)) +
+          "</b> · total da compra <b>" + fmt(qr.v) + "</b></div>"
+        : "") +
       (qr.d ? '<div class="hero-geral">' + esc(qr.d) + "</div>" : "") +
-      (precisaCartao
+      (achouCartao
+        ? '<div class="hero-geral">💳 Cartão <b>' + esc(cardLabel(achouCartao)) +
+          "</b> — reconhecido pelos últimos " + cfAlvo + " que vieram no link. Dá para trocar abaixo.</div>"
+        : "") +
+      (!achouCartao && precisaCartao
         ? '<div class="hero-geral">⚠️ As parcelas só valem para cartão de crédito — escolha o cartão usado abaixo.</div>'
         : "") +
       "</div>";
@@ -1192,8 +1239,9 @@
       '<input type="date" name="date" value="' + esc(qr.dt) + '"></div>' +
       '<div class="field"><label>Cartão usado</label>' +
       '<select name="cardId"' + (precisaCartao ? " required" : "") + ">" + cardOpts + "</select>" +
-      '<div class="hint">São <b>os seus cartões</b> — o link não traz cartão nenhum, ' +
-      "então dá para trocar à vontade se as informações vierem diferentes.</div></div>" +
+      '<div class="hint">São <b>os seus cartões</b> — o link traz só os ' +
+      "4 últimos números, então dá para trocar à vontade se as informações " +
+      "vierem diferentes.</div></div>" +
       "</div>" +
       parcNovoHTML("Cada parcela vira um registro no mês correspondente.", qr.p) +
       '<div id="cicloInfo" class="ciclo" hidden></div>' +
@@ -1247,11 +1295,17 @@
   let shareTexto = "";
   let shareGif = "";
 
-  function linkReceber(total, n, iso, desc) {
+  function linkReceber(total, n, iso, desc, cf) {
     const qs =
       "?v=" + total +
       "&dt=" + encodeURIComponent(iso || today()) +
       "&p=" + (n || 1) +
+      /* v1.14.0: os 4 últimos números do cartão — é o que está impresso no
+         plástico, então o terceiro conhece. NÃO vai o número completo nem o
+         nome: só serve para quem recebe já achar o cartão dele. */
+      (cf
+        ? "&cf=" + encodeURIComponent(String(cf).replace(/\D/g, "").slice(0, 4))
+        : "") +
       (desc ? "&d=" + encodeURIComponent(String(desc).slice(0, 80)) : "");
     return (
       location.origin +
@@ -1297,7 +1351,13 @@
     }
     desc = desc.slice(0, 80);
 
-    const link = linkReceber(total, n, iso, desc);
+    /* v1.14.0: leva os 4 últimos números do cartão para quem recebe já
+       abrir com o cartão certo em vez de "— sem cartão —" */
+    const cardId = dest.indexOf("card:") === 0 ? dest.slice(5) : null;
+    const cSel = cardId ? Store.card(cardId) : null;
+    const cf = cSel && cSel.final ? String(cSel.final).replace(/\D/g, "").slice(0, 4) : "";
+
+    const link = linkReceber(total, n, iso, desc, cf);
     const resumo = resumoQR(total, n, iso, desc);
     shareTexto = "Gasto de terceiro: " + resumo + "\n" + link;
     shareGif = "";
@@ -1335,8 +1395,9 @@
         (shareGif ? '<button class="btn ghost" type="button" data-act="tx-share-png">⬇️ Imagem do QR</button>' : "") +
         '<button class="btn ghost" type="button" data-act="tx-share-close">Fechar</button>' +
         "</div>" +
-        '<div class="hint">O link leva <b>valor, data, parcelas e descrição</b> — nunca o cartão. ' +
-        "Quem recebe confere tudo e escolhe o cartão dele antes de adicionar.</div>" +
+        '<div class="hint">O link leva <b>valor, data da compra, parcelas, ' +
+        "descrição e os 4 últimos números do cartão</b> — nunca o número " +
+        "completo. Quem recebe confere tudo e ajusta o cartão dele se preciso.</div>" +
         '<div class="hint">O lançamento ainda <b>não foi salvo</b> — use <b>Adicionar</b> acima se quiser ' +
         "guardar uma cópia também no seu app.</div>" +
       "</div>"
@@ -1659,6 +1720,10 @@
       sub.push('<span class="pill parcela">' + t.group.n + "/" + t.group.total + "</span>");
       sub.push('<span class="pill total-pill">total ' + fmt(Store.groupTotal(t)) + "</span>");
     }
+    /* v1.14.0: a data da compra difere do vencimento da parcela */
+    if (Store.compraDifere(t))
+      sub.push('<span class="pill bought-pill" title="Dia da compra">comp. ' +
+        ddmmaa(Store.dataCompra(t)) + "</span>");
     sub.push('<span class="' + (isPaid ? "status-paid" : "status-open") + '">' + (isPaid ? "✓ devolvido" : "a devolver") + "</span>");
 
     return (
@@ -2151,6 +2216,7 @@
       '<div class="field"><label>Data</label><input type="date" name="date" value="' + (t ? t.date : today()) + '"></div>' +
       '<div class="field"><label>Descrição</label><input name="note" placeholder="Opcional" value="' + esc(t ? t.note : "") + '"></div>' +
       "</div>" +
+      infoCompra(t) +
       '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="form-actions">' +
       (t ? '<button type="button" class="btn danger" data-act="del-tx" data-id="' + t.id + '">Excluir</button>' : "") +
@@ -2458,10 +2524,15 @@
       (t ? (t.amount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "") +
       '" required></div></div>' +
       '<div class="row2">' +
-      '<div class="field"><label>Data da compra</label><input type="date" name="date" value="' + (t ? t.date : today()) + '"></div>' +
+      '<div class="field"><label>' +
+      /* v1.14.0: o campo datava o VENCIMENTO da parcela, mas o rótulo pedia
+         "data da compra" — agora diz o que realmente é */
+      (t && Store.compraDifere(t) ? "Vence em" : "Data da compra") +
+      '</label><input type="date" name="date" value="' + (t ? t.date : today()) + '"></div>' +
       '<div class="field"><label>Cartão usado</label><select name="cardId">' + cardOpts + "</select></div>" +
       "</div>" +
       parcelas +
+      infoCompra(t) +
       '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="field"><label>Obs.</label><input name="note" placeholder="Ex.: comprou meu sapato" value="' + esc(t ? t.note : "") + '"></div>' +
       (t
@@ -2991,7 +3062,9 @@
     const dt = /^\d{4}-\d{2}-\d{2}$/.test(q.dt || "") ? q.dt : today();
     const p = Math.min(24, Math.max(1, Math.floor(Number(q.p) || 1)));
     const d = String(q.d || "").replace(/[<>]/g, "").slice(0, 80);
-    return { v: v, dt: dt, p: p, d: d };
+    /* v1.14.0: 4 últimos números do cartão, quando o remetente trouxe */
+    const cf = String(q.cf || "").replace(/\D/g, "").slice(0, 4);
+    return { v: v, dt: dt, p: p, d: d, cf: cf };
   }
 
   /* aceita "receber?v=.." (com dados), "/receber?v=.." (como vem no link
@@ -4055,6 +4128,11 @@
       if (podeParcelar && base.type === "out") {
         const ciclo = Store.cicloFatura(base.cardId, base.date);
         if (ciclo && ciclo.vence !== base.date) {
+          /* v1.14.0: guarda o dia da compra ANTES de datar a parcela no
+             vencimento da fatura. Sem isto a data original era destruída —
+             a compra de dia 25 num cartão que fecha dia 22 "pulava" dois
+             meses e sumia do mês em que foi feita. */
+          base.boughtAt = base.date;
           base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
           naFatura = true;
         }
@@ -4256,6 +4334,9 @@
       if (podeParcelar) {
         const ciclo = Store.cicloFatura(base.cardId, base.date);
         if (ciclo && ciclo.vence !== base.date) {
+          /* v1.14.0: mesma regra do lançamento — a data da compra viaja
+             junto, e o QR/link do terceiro passa a trazer ela de volta */
+          base.boughtAt = base.date;
           base.date = Store.addMesesISO(ciclo.vence, total > 1 ? pagas : 0);
           naFatura = true;
         }

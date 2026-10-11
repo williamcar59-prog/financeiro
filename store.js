@@ -387,6 +387,11 @@
          conferido contra o extrato do banco. Backup antigo não traz o
          campo — vira null, que é o mesmo que "ainda não conferido". */
       if (typeof t.reconciledAt !== "string" || !t.reconciledAt) t.reconciledAt = null;
+      /* data da compra (v1.14.0): o dia em que a compra foi FEITA, antes de
+         a parcela ser datada no vencimento da fatura. Backup antigo não traz
+         o campo (não dá para inventar a data depois) — fica null e a tela
+         mostra só o vencimento, como antes. */
+      if (typeof t.boughtAt !== "string" || !t.boughtAt) t.boughtAt = null;
     });
     /* terceiros: mesmo saneamento, mais os campos do esquema antigo
        (who → person · desc → note · value → amount · paid → status).
@@ -408,6 +413,8 @@
       if (!t.person) t.person = "Sem nome";
       if (!t.note) t.note = "";
       if (t.cardId === undefined) t.cardId = null;
+      /* data da compra (v1.14.0) — mesma regra dos lançamentos */
+      if (typeof t.boughtAt !== "string" || !t.boughtAt) t.boughtAt = null;
       if (!t.createdAt) t.createdAt = t.date ? t.date + "T12:00:00.000Z" : new Date().toISOString();
     });
     /* v1.10: categorias criadas depois não aparecem em base antiga — anexa
@@ -690,6 +697,10 @@
              é o mesmo que "ainda não conferido". Precisa vir aqui — sem
              isto o campo ficava undefined e o export não o trazia. */
           reconciledAt: null,
+          /* data da compra (v1.14.0): preenchida só quando o lançamento cai
+             na fatura de um cartão de crédito — `date` passa a ser o dia do
+             vencimento e aqui fica guardado o dia em que a compra aconteceu. */
+          boughtAt: null,
           createdAt: Date.now()
         },
         t
@@ -858,6 +869,8 @@
           note: "",
           status: "open",
           paidAt: null,
+          /* data da compra (v1.14.0) — mesma regra dos lançamentos */
+          boughtAt: null,
           createdAt: Date.now()
         },
         t
@@ -907,6 +920,23 @@
       return list
         .filter((t) => t.type === "out")
         .reduce((s, t) => s + t.amount, 0);
+    },
+    /* ---- data da compra (v1.14.0) -------------------------------------
+       Compra no cartão de crédito gera parcelas datadas no VENCIMENTO da
+       fatura — aí `date` deixa de ser o dia da compra. `boughtAt` guarda
+       esse dia; quando não existe (registro antigo) a data da compra é a
+       própria `date`, que era tudo o que o app sabia antes da v1.14.0. */
+    dataCompra(item) {
+      if (!item) return null;
+      return typeof item.boughtAt === "string" && item.boughtAt
+        ? item.boughtAt
+        : item.date || null;
+    },
+    /* true quando a data da compra difere do vencimento da parcela — é o
+       sinal de que vale a pena mostrar as duas na tela */
+    compraDifere(item) {
+      const c = Store.dataCompra(item);
+      return !!(c && item && item.date && c !== item.date);
     },
     /* ---- ciclo da fatura (v1.9.2) -------------------------------------
        A compra entra na fatura que fecha no primeiro dia de fechamento

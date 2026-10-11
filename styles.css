@@ -1005,6 +1005,15 @@ body.nao-logado #app { display: none; }
   border-color: transparent;
 }
 
+/* ============ v1.14.0: data da compra ao lado do vencimento ============
+   A parcela de cartão é datada no vencimento da fatura; o pill mostra o
+   dia em que a compra foi feita, que é o que o usuário digitou. */
+.pill.bought-pill {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+  border-color: transparent;
+}
+
 /* ============ v1.13.0: conciliação com o extrato ============ */
 .conc-barra-wrap { margin: 10px 0 4px; }
 .conc-barra-linha {

@@ -72,6 +72,14 @@
       </div>
 
       <div class="field">
+        <label for="cf">Cartão usado — 4 últimos números (opcional)</label>
+        <input id="cf" name="cf" inputmode="numeric" maxlength="4" placeholder="Ex.: 1234" autocomplete="off">
+        <div class="hint">Só os <b>4 últimos dígitos</b> que aparecem no plástico — é o que
+          você enxerga no cartão de quem te emprestou. Com isso quem recebe já abre o
+          aplicativo com o cartão certo escolhido. <b>Não coloque o número completo.</b></div>
+      </div>
+
+      <div class="field">
         <label for="d">Descrição</label>
         <input id="d" name="d" maxlength="80" placeholder="Ex.: comprou meu sapato" autocomplete="off">
       </div>
@@ -190,9 +198,9 @@
   /* ---------------- QR ---------------- */
   var linkAtual = "", textoAtual = "", qrObj = null;
 
-  function resumo(total, n, iso, desc) {
+  function resumo(total, n, iso, desc, cf) {
     return (desc ? desc + " · " : "") + fmt(total) + (n > 1 ? " em " + n + "x" : "") +
-           " · " + dataBR(iso);
+           " · " + dataBR(iso) + (cf ? " · cartão •" + cf : "");
   }
 
   $("#tgForm").addEventListener("submit", function (e) {
@@ -202,11 +210,15 @@
     var n = Number(p.value) || 1;
     var iso = dt.value || hoje();
     var desc = String(d.value || "").trim().slice(0, 80);
+    /* v1.14.0: 4 últimos números do cartão — é o que está impresso no
+       plástico, então dá para o terceiro preencher. Opcional. */
+    var cf = String($("#cf").value || "").replace(/\D/g, "").slice(0, 4);
 
     var qs = "?v=" + total + "&dt=" + encodeURIComponent(iso) +
-             "&p=" + n + (desc ? "&d=" + encodeURIComponent(desc) : "");
+             "&p=" + n + (cf ? "&cf=" + encodeURIComponent(cf) : "") +
+             (desc ? "&d=" + encodeURIComponent(desc) : "");
     linkAtual = baseApp() + "#/receber" + qs;
-    textoAtual = "Gasto de terceiro: " + resumo(total, n, iso, desc);
+    textoAtual = "Gasto de terceiro: " + resumo(total, n, iso, desc, cf);
 
     try {
       qrObj = qrcode(0, "M");
@@ -219,7 +231,7 @@
       $("#btSave").href = "#";
     }
 
-    $("#qrResumo").textContent = resumo(total, n, iso, desc);
+    $("#qrResumo").textContent = resumo(total, n, iso, desc, cf);
     $("#qrLinkOut").value = linkAtual;
     $("#qrBox").hidden = false;
     $("#qrOk").textContent = "";
