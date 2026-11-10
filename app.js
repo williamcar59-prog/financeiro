@@ -8,8 +8,8 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.14.0";
-  const BUILD_DATE = "10/10/2026"; /* data da publicação */
+  const APP_VERSION = "1.15.0";
+  const BUILD_DATE = "10/11/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r) => (r || document).querySelector(s);
@@ -293,10 +293,15 @@
       });
       return;
     }
+    /* v1.15.0 — se o lançamento tinha cobrança vinculada, ela some junto
+       e volta no desfazer (os dois são restaurados) */
+    const vinc = splitDoTx(copia.id);
+    if (vinc) Store.removeThird(vinc.id);
     Store.removeTx(copia.id);
     render();
-    toast("Lançamento excluído", () => {
+    toast(vinc ? "Lançamento e cobrança excluídos" : "Lançamento excluído", () => {
       Store.restoreTx(copia);
+      if (vinc) Store.restoreThird(vinc);
       render();
       toast("Exclusão desfeita ✓");
     });
@@ -789,6 +794,11 @@
     if (Store.compraDifere(t))
       sub.push('<span class="pill bought-pill" title="Dia da compra">comp. ' +
         ddmmaa(Store.dataCompra(t)) + "</span>");
+    /* v1.15.0 — conta dividida: quanto a outra pessoa deve */
+    const divTx = splitDoTx(t.id);
+    if (divTx)
+      sub.push('<span class="pill split-pill" title="Conta dividida">🤝 ' +
+        esc(divTx.person) + " " + fmt(divTx.amount) + "</span>");
 
     return (
       '<button class="row-item" data-act="edit-tx" data-id="' + t.id + '">' +
@@ -1590,6 +1600,27 @@
         : "") +
       "</div>" +
 
+      /* v1.15.0 — contas divididas no mês (iFood etc.): o resumo do que a
+         pessoa deve SÓ dessas, separado do resto dos terceiros */
+      (function () {
+        const divididas = all.filter((x) => x.splitOf);
+        if (!divididas.length) return "";
+        const somaDiv = divididas.reduce((s, x) => s + x.amount, 0);
+        const abertas = divididas.filter((x) => x.status === "open").length;
+        return (
+          '<div class="card split-card">' +
+          '<div class="sc-t">🍽️ Contas divididas em ' + mes + "</div>" +
+          '<div class="sc-v">' + fmt(somaDiv) + "</div>" +
+          '<div class="orc-dica">' +
+          divididas.length +
+          " pedido(s) · " +
+          (abertas
+            ? "<b>" + abertas + "</b> ainda sem acerto"
+            : "tudo acertado ✓") +
+          "</div></div>"
+        );
+      })() +
+
       '<div class="chips">' +
       chip("open", "Em aberto (" + open.length + ")", state.thirdFilter, "third") +
       chip("paid", "Devolvidos (" + paid.length + ")", state.thirdFilter, "third") +
@@ -1713,6 +1744,8 @@
     const card = t.cardId ? Store.card(t.cardId) : null;
     const sub = [];
     if (t.note) sub.push(esc(t.note));
+    /* v1.15.0 — veio de uma conta dividida (iFood, mercado...) */
+    if (t.splitOf) sub.push('<span class="pill split-pill">🍽️ conta dividida</span>');
     sub.push('<span class="pill">' + esc(fullDate(t.date)) + "</span>");
     if (card) sub.push('<span class="pill card-pill">' + esc(card.name) + (card.final ? " •" + esc(card.final) : "") + "</span>");
     /* parcelado: número da parcela e valor total da compra */
@@ -2161,6 +2194,92 @@
   /* =====================================================================
      MODAIS: LANÇAMENTO
      ===================================================================== */
+  /* =====================================================================
+     v1.15.0 — CONTA DIVIDIDA (iFood, mercado, café...)
+     O lançamento fica com o valor INTEIRO (é o que saiu da carteira) e a
+     metade da outra pessoa vira um registro em Terceiros (a receber),
+     ligado ao lançamento por `splitOf`. Sem cardId: assim a fatura do
+     cartão não conta duas vezes a mesma compra.
+     ===================================================================== */
+  function splitDoTx(txId) {
+    if (!txId) return null;
+    return Store.data.third.find((x) => x.splitOf === txId) || null;
+  }
+
+  /* seção "🤝 Essa conta foi dividida" dentro do formulário de lançamento */
+  function splitSection(t) {
+    /* só para saída — entrada não se divide */
+    if (t && t.type !== "out") return "";
+    const vinc = t ? splitDoTx(t.id) : null;
+    const nomes = terceirosPessoas(Store.data.third);
+    const sel = vinc ? String(vinc.person || "").trim() : "";
+    return (
+      '<div class="split-box" id="splitBox">' +
+      '<label class="chk-row"><input type="checkbox" name="splitOn"' +
+      (vinc ? " checked" : "") +
+      '><span>🤝 Essa conta foi dividida (metade pra cada)</span></label>' +
+      '<div id="splitDet"' + (vinc ? "" : " hidden") + ">" +
+      '<div class="field"><label for="splitPerson">Dividida com</label>' +
+      '<input id="splitPerson" name="splitPerson" list="splitPessoas" autocomplete="off" ' +
+      'placeholder="Nome (ex.: Bete)" value="' + esc(sel) + '">' +
+      '<datalist id="splitPessoas">' +
+      nomes.map((p) => '<option value="' + esc(p) + '"></option>').join("") +
+      "</datalist></div>" +
+      '<div class="split-prev" id="splitPrev"></div>' +
+      '<div class="hint">O lançamento fica com o valor <b>inteiro</b> — é o que saiu da sua ' +
+      "carteira — e a metade dela vira cobrança em <b>👥 Terceiros</b>, no mesmo mês.</div>" +
+      "</div></div>"
+    );
+  }
+
+  /* mostra/esconde os detalhes e a prévia "X deve R$ Y" enquanto digita */
+  function syncSplit(form) {
+    if (!form) return;
+    const box = $("#splitBox", form);
+    if (!box) return;
+    const on = box.querySelector('[name="splitOn"]');
+    const det = $("#splitDet", form);
+    if (det) det.hidden = !(on && on.checked);
+    const prev = $("#splitPrev", form);
+    if (!prev) return;
+    if (!on || !on.checked) {
+      prev.innerHTML = "";
+      return;
+    }
+    const nome =
+      String((form.splitPerson && form.splitPerson.value) || "").trim() || "a outra pessoa";
+    const bruto = parseMoney(form.amount ? form.amount.value : "");
+    const metade = bruto ? Math.round(bruto / 2) : 0;
+    prev.innerHTML = bruto
+      ? "<b>" + esc(nome) + " deve " + fmt(metade) + "</b> · você fica com " + fmt(bruto - metade)
+      : "Informe o valor para ver quanto cada um paga";
+  }
+
+  /* cria/atualiza/apaga o registro de cobrança junto com o lançamento */
+  function aplicarSplit(form, txId, base, quer) {
+    const vinc = splitDoTx(txId);
+    if (!quer) {
+      if (vinc) {
+        Store.removeThird(vinc.id);
+        return "cobrança removida";
+      }
+      return "";
+    }
+    const nome = String((form.splitPerson && form.splitPerson.value) || "").trim();
+    if (!nome || base.amount <= 0) return "";
+    const metade = Math.round(base.amount / 2);
+    const patch = {
+      person: nome,
+      amount: metade,
+      date: base.date,
+      splitOf: txId,
+      note: base.note || ""
+    };
+    if (vinc) Store.updateThird(vinc.id, patch);
+    else Store.addThird(Object.assign({ split: true, status: "open" }, patch));
+    return "🤝 " + nome + " deve " + fmt(metade);
+  }
+
   function txSheet(id) {
     const t = id ? Store.tx(id) : null;
     const type = t ? t.type : "out";
@@ -2217,6 +2336,7 @@
       '<div class="field"><label>Descrição</label><input name="note" placeholder="Opcional" value="' + esc(t ? t.note : "") + '"></div>' +
       "</div>" +
       infoCompra(t) +
+      splitSection(t) +
       '<div id="cicloInfo" class="ciclo" hidden></div>' +
       '<div class="form-actions">' +
       (t ? '<button type="button" class="btn danger" data-act="del-tx" data-id="' + t.id + '">Excluir</button>' : "") +
@@ -2266,6 +2386,14 @@
     if (parc) parc.hidden = !verParc;
     const pago = $("#paidField", form);
     if (pago) pago.hidden = !(verParc && n > 1);
+    /* v1.15.0 — a conta dividida só faz sentido em saída à vista:
+       parcelado já nasce dividido em meses e entrada não se divide */
+    const sb = $("#splitBox", form);
+    if (sb) {
+      const ehGrupo = form.dataset.grupo === "1";
+      sb.hidden = !(saida && n <= 1 && !ehGrupo);
+      if (!sb.hidden) syncSplit(form);
+    }
     const ativo = verParc && n > 1;
     const vm = $("#vmodeField", form);
     if (vm) vm.hidden = !ativo || form.dataset.total === "1";
@@ -3879,6 +4007,8 @@
       syncParcelas(e.target.closest("form"));
       syncFatura(e.target.closest("form"));
     }
+    /* v1.15.0 — ligar/desligar a conta dividida mostra os campos e a prévia */
+    if (e.target.name === "splitOn") syncSplit(e.target.closest("form"));
     /* cadastro de cartão: trocar o tipo mostra só os campos dele */
     if (e.target.name === "kind" && e.target.form && e.target.form.dataset.form === "card")
       syncCardForm(e.target.form);
@@ -3908,7 +4038,12 @@
 
   /* a prévia do parcelamento acompanha o valor enquanto digita */
   document.addEventListener("input", (e) => {
-    if (e.target.name === "amount") syncParcelas(e.target.closest("form"));
+    if (e.target.name === "amount") {
+      syncParcelas(e.target.closest("form"));
+      syncSplit(e.target.closest("form"));
+    }
+    /* o nome de quem divide atualiza a prévia "X deve R$ Y" */
+    if (e.target.name === "splitPerson") syncSplit(e.target.closest("form"));
     /* o aviso da fatura acompanha a data enquanto digita */
     if (e.target.name === "date") syncFatura(e.target.closest("form"));
     /* escala da interface muda em tempo real enquanto arrasta */
@@ -4099,6 +4234,17 @@
   function saveTx(form, fd) {
     const amount = parseMoney(fd.get("amount"));
     if (amount <= 0) return toast("Informe o valor");
+    /* v1.15.0 — conta dividida: confere ANTES de gravar qualquer coisa.
+       Só vale para saída à vista que não seja parcela de grupo. */
+    const splitLigado = !!(form.querySelector('[name="splitOn"]') || {}).checked;
+    const splitNome = String(fd.get("splitPerson") || "").trim();
+    const nParc = Number(fd.get("installments") || 1) || 1;
+    const splitOk =
+      splitLigado &&
+      String(fd.get("type") || "out") === "out" &&
+      nParc <= 1 &&
+      !form.dataset.grupo;
+    if (splitOk && !splitNome) return toast("Informe com quem a conta foi dividida");
     const dest = String(fd.get("dest") || "");
     const isCard = dest.indexOf("card:") === 0;
     const base = {
@@ -4113,7 +4259,8 @@
     const id = form.dataset.id;
     if (id) {
       Store.updateTx(id, base);
-      toast("Lançamento atualizado");
+      const msgSplit = aplicarSplit(form, id, base, splitOk);
+      toast("Lançamento atualizado" + (msgSplit ? " · " + msgSplit : ""));
     } else {
       /* parcela é coisa de cartão de CRÉDITO — vale (VR/VA) é à vista */
       const cSel = isCard ? Store.card(base.cardId) : null;
@@ -4156,10 +4303,12 @@
             (naFatura ? " · 1ª em " + fullDate(base.date) : "")
         );
       } else {
-        Store.addTx(base);
+        const novo = Store.addTx(base);
+        const msgSplit = aplicarSplit(form, novo.id, base, splitOk);
         toast(
           "Lançamento adicionado" +
-            (naFatura ? " · fatura vence " + fullDate(base.date) : "")
+            (naFatura ? " · fatura vence " + fullDate(base.date) : "") +
+            (msgSplit ? " · " + msgSplit : "")
         );
       }
     }

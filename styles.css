@@ -1068,3 +1068,58 @@ body.nao-logado #app { display: none; }
 /* o nav de mês da folha fica centralizado e mais discreto */
 .conc-nav { display: flex; justify-content: center; margin: 6px 0 2px; }
 .conc-nav .month-nav { border: 0; padding: 0; background: none; }
+
+/* ============ v1.15.0: conta dividida (iFood etc.) ============ */
+.split-box {
+  border: 1.5px dashed var(--line);
+  background: var(--bg);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 6px 0 8px;
+}
+.chk-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.35;
+}
+.chk-row input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--brand);
+  flex-shrink: 0;
+}
+.split-prev {
+  font-size: 14px;
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  margin: 10px 0 8px;
+}
+.split-prev b { color: var(--ink); font-weight: 700; }
+.pill.split-pill {
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  border-color: transparent;
+}
+.split-card { border: 1.5px solid rgba(245, 158, 11, 0.4); }
+.split-card .sc-t {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.split-card .sc-v {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 4px 0 2px;
+}
