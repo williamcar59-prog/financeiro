@@ -1057,9 +1057,17 @@
         proxima: restantes[0] || null
       };
     },
+    /* o que os outros me devem (v1.16.0: registos "💸 devo" — o que EU devo
+       a alguém — ficam DE FORA, senão a dívida alheia virava dinheiro meu) */
     thirdOpenSum() {
       return Store.data.third
-        .filter((t) => t.status === "open")
+        .filter((t) => t.status === "open" && t.dir !== "devo")
+        .reduce((s, t) => s + t.amount, 0);
+    },
+    /* o que EU devo (contas divididas recebidas) — aberto, todos os meses */
+    devoOpenSum() {
+      return Store.data.third
+        .filter((t) => t.status === "open" && t.dir === "devo")
         .reduce((s, t) => s + t.amount, 0);
     },
 

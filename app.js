@@ -8,7 +8,7 @@
 
   /* ---------------- versão do app ----------------
      >>> ao publicar uma atualização: mude AQUI e no sw.js (mesmo número) */
-  const APP_VERSION = "1.15.0";
+  const APP_VERSION = "1.16.0";
   const BUILD_DATE = "10/11/2026"; /* data da publicação */
 
   /* ---------------- helpers ---------------- */
@@ -794,11 +794,19 @@
     if (Store.compraDifere(t))
       sub.push('<span class="pill bought-pill" title="Dia da compra">comp. ' +
         ddmmaa(Store.dataCompra(t)) + "</span>");
-    /* v1.15.0 — conta dividida: quanto a outra pessoa deve */
+    /* v1.15.0 — conta dividida: quanto a outra pessoa deve.
+       v1.16.0: se o lançamento veio de uma divisão RECEBIDA, é o que VOCÊ
+       deve — o pill muda de cor e de seta para não confundir. */
     const divTx = splitDoTx(t.id);
-    if (divTx)
-      sub.push('<span class="pill split-pill" title="Conta dividida">🤝 ' +
-        esc(divTx.person) + " " + fmt(divTx.amount) + "</span>");
+    if (divTx) {
+      const souDevedor = divTx.dir === "devo";
+      sub.push(
+        '<span class="pill split-pill' + (souDevedor ? " sou-devo" : "") +
+          '" title="' + (souDevedor ? "Você deve" : "Conta dividida") + '">' +
+          (souDevedor ? "💸 " : "🤝 ") + esc(divTx.person) + " " + fmt(divTx.amount) +
+          "</span>"
+      );
+    }
 
     return (
       '<button class="row-item" data-act="edit-tx" data-id="' + t.id + '">' +
@@ -1125,6 +1133,8 @@
       '<select id="tdview" name="tdview">' +
       '<option value="mes"' + (view === "mes" ? " selected" : "") + ">📅 Compras do mês</option>" +
       '<option value="geral"' + (view === "geral" ? " selected" : "") + ">📊 Resumo geral · todos os valores</option>" +
+      /* v1.16.0: o que EU devo (contas divididas recebidas) */
+      '<option value="devo"' + (view === "devo" ? " selected" : "") + ">💸 Devo · o que eu devo</option>" +
       (pessoas.length
         ? '<optgroup label="👤 Por pessoa">' +
           pessoas
@@ -1142,10 +1152,12 @@
   /* os registros em aberto do mês + pessoa filtrados na tela (v1.8.0) */
   function terceirosAbertosFiltrados() {
     const todos = Store.data.third;
-    const pessoas = terceirosPessoas(todos);
+    const pessoas = terceirosPessoas(todos.filter((t) => t.dir !== "devo"));
     let pessoaSel = state.thirdPerson || "";
     if (pessoaSel && pessoas.indexOf(pessoaSel) === -1) pessoaSel = "";
-    let all = todos.filter((t) => t.date.slice(0, 7) === state.month);
+    let all = todos.filter(
+      (t) => t.date.slice(0, 7) === state.month && t.dir !== "devo"
+    );
     if (pessoaSel)
       all = all.filter((t) => ((t.person || "").trim() || "Sem nome") === pessoaSel);
     return all.filter((t) => t.status === "open");
@@ -1158,10 +1170,20 @@
     if (view.slice(0, 2) === "p:") {
       const quem = view.slice(2);
       return Store.data.third.filter(
-        (t) => ((t.person || "").trim() || "Sem nome") === quem && t.status === "open"
+        (t) =>
+          t.dir !== "devo" &&
+          ((t.person || "").trim() || "Sem nome") === quem &&
+          t.status === "open"
       );
     }
     return terceirosAbertosFiltrados();
+  }
+
+  /* v1.16.0 — alvo do "✅ Paguei todos": só as DÍVIDAS em aberto do mês */
+  function devoAlvoMassa() {
+    return Store.data.third.filter(
+      (t) => t.dir === "devo" && t.status === "open" && t.date.slice(0, 7) === state.month
+    );
   }
 
   /* =====================================================================
@@ -1187,6 +1209,61 @@
     }
 
     const qr = state.qr;
+
+    /* ============ v1.16.0: CONTA DIVIDIDA recebida ============
+       Quem enviou pagou a conta inteira. Aqui só a SUA metade entra nos
+       seus lançamentos (identificada como dividida) e a outra metade vira
+       dívida — "💸 devo" — no seu Terceiros, no nome de quem enviou. */
+    if (qr.sp) {
+      const metade = Math.round(qr.v / 2);
+      const resumoDiv =
+        '<div class="card hero">' +
+        '<div class="label">🍽️ Conta dividida — total da conta</div>' +
+        '<div class="value">' + fmt(qr.v) + "</div>" +
+        '<div class="row">' +
+        '<div><div class="k"><i class="dot y"></i>Sua metade</div><div class="v">' +
+        fmt(metade) + "</div></div>" +
+        '<div><div class="k"><i class="dot g"></i>Data da conta</div><div class="v">' +
+        esc(fullDate(qr.dt)) + "</div></div>" +
+        "</div>" +
+        '<div class="hero-geral">Quem enviou pagou <b>' + fmt(qr.v) +
+        "</b> — sua metade é <b>" + fmt(metade) + "</b> e a outra metade <b>" +
+        fmt(qr.v - metade) + "</b> fica como sua dívida com ele.</div>" +
+        (qr.d ? '<div class="hero-geral">' + esc(qr.d) + "</div>" : "") +
+        "</div>";
+
+      const formDiv =
+        '<form data-form="third" data-qr="1" data-split="1" class="card" style="padding:16px">' +
+        '<div class="sec-title" style="margin-bottom:10px">Confira e confirme</div>' +
+        '<div class="field"><label for="qrpessoa">De quem você recebeu</label>' +
+        '<input id="qrpessoa" name="person" placeholder="Nome de quem enviou" autocomplete="off" required></div>' +
+        '<div class="field"><label>Sua metade (o que entra nos seus lançamentos)</label>' +
+        '<div class="amount-wrap"><span class="cur">R$</span>' +
+        '<input name="amount" inputmode="decimal" placeholder="0,00" value="' +
+        (metade / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) +
+        '" required></div></div>' +
+        '<div class="field"><label>Categoria</label><select name="catId">' +
+        catOptions("out", null) + "</select></div>" +
+        '<div class="field"><label>Data da conta</label>' +
+        '<input type="date" name="date" value="' + esc(qr.dt) + '"></div>' +
+        '<div class="field"><label>Descrição</label>' +
+        '<input name="note" maxlength="80" placeholder="Ex.: iFood dividido" value="' +
+        esc(qr.d) + '"></div>' +
+        '<div class="hint strong" style="margin-bottom:12px">Ao confirmar entram <b>2 registros</b>: ' +
+        "um lançamento de <b>saída</b> com a sua metade (marcado como 🤝 dividido) e a outra " +
+        "metade como <b>💸 dívida</b> em 👥 Terceiros. Nada foi gravado ainda.</div>" +
+        '<div class="form-actions">' +
+        '<button class="btn ghost" type="button" data-act="qr-descartar">Descartar</button>' +
+        '<button class="btn" type="submit">✅ Adicionar divisão</button>' +
+        "</div></form>";
+
+      return (
+        '<div class="top"><div><h1>🍽️ Conta dividida</h1>' +
+        '<div class="sub">Veio por link · confira antes de confirmar</div></div></div>' +
+        resumoDiv + formDiv
+      );
+    }
+
     /* parcela só existe em cartão de crédito — com p>1 o vale fica de fora */
     const cards =
       qr.p > 1
@@ -1305,7 +1382,7 @@
   let shareTexto = "";
   let shareGif = "";
 
-  function linkReceber(total, n, iso, desc, cf) {
+  function linkReceber(total, n, iso, desc, cf, sp) {
     const qs =
       "?v=" + total +
       "&dt=" + encodeURIComponent(iso || today()) +
@@ -1316,6 +1393,9 @@
       (cf
         ? "&cf=" + encodeURIComponent(String(cf).replace(/\D/g, "").slice(0, 4))
         : "") +
+      /* v1.16.0: conta dividida — quem recebe abre a tela de divisão e a
+         outra metade vira "💸 eu devo" no Terceiros dele */
+      (sp ? "&sp=1" : "") +
       (desc ? "&d=" + encodeURIComponent(String(desc).slice(0, 80)) : "");
     return (
       location.origin +
@@ -1367,9 +1447,16 @@
     const cSel = cardId ? Store.card(cardId) : null;
     const cf = cSel && cSel.final ? String(cSel.final).replace(/\D/g, "").slice(0, 4) : "";
 
-    const link = linkReceber(total, n, iso, desc, cf);
+    /* v1.16.0: se essa conta está marcada como DIVIDIDA, o link já nasce
+       como divisão — quem recebe cria a dele e fica com a outra metade
+       como dívida, sem ninguém digitar nada duas vezes */
+    const cbSplit = form.querySelector('[name="splitOn"]');
+    const ehDividida = !!(cbSplit && cbSplit.checked) && n <= 1;
+
+    const link = linkReceber(total, n, iso, desc, cf, ehDividida);
     const resumo = resumoQR(total, n, iso, desc);
-    shareTexto = "Gasto de terceiro: " + resumo + "\n" + link;
+    shareTexto =
+      (ehDividida ? "Conta dividida: " : "Gasto de terceiro: ") + resumo + "\n" + link;
     shareGif = "";
     let imgHTML = "";
     if (typeof qrcode === "function") {
@@ -1529,19 +1616,24 @@
     const todos = Store.data.third.slice().sort((a, b) =>
       (b.date + String(b.createdAt)).localeCompare(a.date + String(a.createdAt))
     );
-    const pessoas = terceirosPessoas(todos);
+    /* v1.16.0: os "💸 devo" (o que EU devo por conta dividida) ficam FORA
+       das telas de "a receber" — senão a mesma dívida aparecia dos dois
+       lados e inflava o Painel. Eles têm tela própria. */
+    const semDevo = todos.filter((t) => t.dir !== "devo");
+    const pessoas = terceirosPessoas(semDevo);
     let view = state.thirdView || "mes";
     /* a pessoa escolhida pode ter sumido (registro apagado) — volta ao padrão */
     if (view.slice(0, 2) === "p:" && pessoas.indexOf(view.slice(2)) === -1) view = "mes";
     const menu = terceirosMenu(pessoas, view);
 
-    if (view === "geral") return thirdGeral(todos, pessoas, menu);
-    if (view.slice(0, 2) === "p:") return thirdPessoa(todos, view.slice(2), menu);
+    if (view === "devo") return viewDevo(todos, menu);
+    if (view === "geral") return thirdGeral(semDevo, pessoas, menu);
+    if (view.slice(0, 2) === "p:") return thirdPessoa(semDevo, view.slice(2), menu);
 
     /* filtro por pessoa dentro do mês selecionado */
     let pessoaSel = state.thirdPerson || "";
     if (pessoaSel && pessoas.indexOf(pessoaSel) === -1) pessoaSel = "";
-    let all = todos.filter((t) => t.date.slice(0, 7) === state.month);
+    let all = semDevo.filter((t) => t.date.slice(0, 7) === state.month);
     if (pessoaSel)
       all = all.filter((t) => ((t.person || "").trim() || "Sem nome") === pessoaSel);
     const open = all.filter((t) => t.status === "open");
@@ -1549,9 +1641,13 @@
     const sumOpen = open.reduce((s, t) => s + t.amount, 0);
     const sumPaid = paid.reduce((s, t) => s + t.amount, 0);
     /* o que falta receber contando TODOS os meses (linha extra no cartão) */
-    const sumOpenGeral = todos
+    const sumOpenGeral = semDevo
       .filter((t) => t.status === "open")
       .reduce((s, t) => s + t.amount, 0);
+    /* o que EU devo neste mês — aviso no topo (v1.16.0) */
+    const devoMes = todos.filter(
+      (t) => t.dir === "devo" && t.status === "open" && t.date.slice(0, 7) === state.month
+    );
 
     let list = all;
     if (state.thirdFilter === "open") list = open;
@@ -1621,6 +1717,22 @@
         );
       })() +
 
+      /* v1.16.0 — aviso do que EU devo neste mês (contas divididas recebidas) */
+      (function () {
+        if (!devoMes.length) return "";
+        const somaDevo = devoMes.reduce((s, x) => s + x.amount, 0);
+        const quem = {};
+        devoMes.forEach((x) => (quem[x.person || "alguém"] = 1));
+        return (
+          '<div class="card devo-card" data-act="td-devo-view" style="cursor:pointer">' +
+          '<div class="sc-t">💸 Devo neste mês</div>' +
+          '<div class="sc-v">' + fmt(somaDevo) + "</div>" +
+          '<div class="orc-dica">' + devoMes.length + " conta(s) dividida(s) com <b>" +
+          esc(Object.keys(quem).join(", ")) +
+          "</b> — toque para acertar</div></div>"
+        );
+      })() +
+
       '<div class="chips">' +
       chip("open", "Em aberto (" + open.length + ")", state.thirdFilter, "third") +
       chip("paid", "Devolvidos (" + paid.length + ")", state.thirdFilter, "third") +
@@ -1631,6 +1743,50 @@
           "✅ Marcar todos como devolvidos (" + open.length + ")</button></div>"
         : "") +
       body
+    );
+  }
+
+  /* ---------- v1.16.0: visão "💸 Devo" — o que EU devo ---------- */
+  /* Só as contas divididas que você RECEBEU: a outra metade fica aqui até
+     você pagar. Ação principal é o ✓ de cada linha ou o "Paguei todos". */
+  function viewDevo(todos, menu) {
+    const mes = esc(monthLabel(state.month));
+    const itens = todos.filter(
+      (t) => t.dir === "devo" && t.date.slice(0, 7) === state.month
+    );
+    const abertos = itens.filter((t) => t.status === "open");
+    const pagos = itens.filter((t) => t.status === "paid");
+    const soma = abertos.reduce((s, t) => s + t.amount, 0);
+    const somaPago = pagos.reduce((s, t) => s + t.amount, 0);
+
+    const corpo = itens.length
+      ? '<div class="rows">' + itens.map(rowThird).join("") + "</div>"
+      : '<div class="empty"><div class="big">💸</div><h3>Nada a pagar em ' + mes + "</h3>" +
+        "<p>Quando você <b>receber uma conta dividida</b> por link, a outra metade " +
+        "aparece aqui — é o que você deve para quem enviou. Ao pagar, toque no <b>✓</b> " +
+        "da linha (ou use <b>✅ Paguei todos</b>).</p>" +
+        '<button class="btn ghost" data-act="td-view-mes">Voltar para 📅 Compras do mês</button></div>';
+
+    return (
+      '<div class="top"><div><h1>💸 Devo</h1>' +
+      '<div class="sub">Contas divididas recebidas · o que falta pagar</div></div>' +
+      monthNav() +
+      "</div>" +
+      menu +
+      '<div class="card hero devo-hero">' +
+      '<div class="label">💸 Devo em ' + mes + "</div>" +
+      '<div class="value">' + fmt(soma) + "</div>" +
+      '<div class="row">' +
+      '<div><div class="k"><i class="dot r"></i>Em aberto</div><div class="v">' +
+      abertos.length + " conta(s)</div></div>" +
+      '<div><div class="k"><i class="dot g"></i>Já paguei</div><div class="v">' +
+      fmt(somaPago) + "</div></div>" +
+      "</div></div>" +
+      (abertos.length > 1
+        ? '<div class="td-massa"><button class="btn ghost small" data-act="td-pay-all">' +
+          "✅ Paguei todos (" + abertos.length + ")</button></div>"
+        : "") +
+      corpo
     );
   }
 
@@ -1757,10 +1913,16 @@
     if (Store.compraDifere(t))
       sub.push('<span class="pill bought-pill" title="Dia da compra">comp. ' +
         ddmmaa(Store.dataCompra(t)) + "</span>");
-    sub.push('<span class="' + (isPaid ? "status-paid" : "status-open") + '">' + (isPaid ? "✓ devolvido" : "a devolver") + "</span>");
+    /* v1.16.0: é o que EU devo (conta dividida recebida) — outro rótulo */
+    const devo = t.dir === "devo";
+    sub.push(
+      '<span class="' + (isPaid ? "status-paid" : "status-open") + '">' +
+        (isPaid ? (devo ? "✓ pago" : "✓ devolvido") : devo ? "💸 eu devo" : "a devolver") +
+        "</span>"
+    );
 
     return (
-      '<div class="td-item">' +
+      '<div class="td-item' + (devo ? " devo-item" : "") + '">' +
       '<div class="avatar ' + (isPaid ? "paid" : "") + '">' + esc((t.person || "?").slice(0, 2)) + "</div>" +
       '<div class="row-mid" data-act="edit-third" data-id="' + t.id + '" style="cursor:pointer">' +
       '<div class="t">' + esc(t.person || "Sem nome") + "</div>" +
@@ -1768,7 +1930,8 @@
       '<div style="text-align:right">' +
       '<div class="row-val ' + (isPaid ? "" : "out") + '" style="' + (isPaid ? "color:var(--ink-3)" : "") + '">' + fmt(t.amount) + "</div>" +
       "</div>" +
-      '<button class="check ' + (isPaid ? "done" : "") + '" data-act="toggle-third" data-id="' + t.id + '" aria-label="Marcar como devolvido">' +
+      '<button class="check ' + (isPaid ? "done" : "") + '" data-act="toggle-third" data-id="' + t.id +
+      '" aria-label="' + (devo ? "Marcar como pago" : "Marcar como devolvido") + '">' +
       (isPaid ? "✓" : "") + "</button>" +
       "</div>"
     );
@@ -2085,8 +2248,12 @@
       /* quanto do mês veio parcelado */
       const parcelados = l.filter((t) => t.type === "out" && t.group && t.group.total > 1);
 
-      /* terceiros do mês, agrupados por pessoa (e o que saiu do SEU cartão) */
-      const tdMes = Store.data.third.filter((t) => String(t.date || "").slice(0, 7) === mk);
+      /* terceiros do mês, agrupados por pessoa (e o que saiu do SEU cartão)
+         v1.16.0: "💸 devo" fica de fora — não é gasto de terceiro nem é
+         dinheiro que vão me devolver */
+      const tdMes = Store.data.third.filter(
+        (t) => String(t.date || "").slice(0, 7) === mk && t.dir !== "devo"
+      );
       const porPessoa = {};
       tdMes.forEach((t) => {
         const p = t.person || "Sem nome";
@@ -2207,27 +2374,48 @@
   }
 
   /* seção "🤝 Essa conta foi dividida" dentro do formulário de lançamento */
+  /* v1.16.0: `splitDir: "devo"` marca um lançamento que VEIO de uma divisão
+     recebida — aí o valor do lançamento já é só a minha metade. */
+  function splitDevo(txId, vinc) {
+    if (vinc && vinc.dir === "devo") return true;
+    const tx = txId ? Store.tx(txId) : null;
+    return !!(tx && tx.splitDir === "devo");
+  }
+
   function splitSection(t) {
     /* só para saída — entrada não se divide */
     if (t && t.type !== "out") return "";
     const vinc = t ? splitDoTx(t.id) : null;
+    const devo = t ? splitDevo(t.id, vinc) : false;
     const nomes = terceirosPessoas(Store.data.third);
     const sel = vinc ? String(vinc.person || "").trim() : "";
     return (
-      '<div class="split-box" id="splitBox">' +
+      '<div class="split-box' + (devo ? " split-devo" : "") + '" id="splitBox">' +
       '<label class="chk-row"><input type="checkbox" name="splitOn"' +
       (vinc ? " checked" : "") +
-      '><span>🤝 Essa conta foi dividida (metade pra cada)</span></label>' +
+      "><span>" +
+      (devo
+        ? "💸 Conta dividida recebida — você deve a outra metade"
+        : "🤝 Essa conta foi dividida (metade pra cada)") +
+      "</span></label>" +
       '<div id="splitDet"' + (vinc ? "" : " hidden") + ">" +
-      '<div class="field"><label for="splitPerson">Dividida com</label>' +
+      '<div class="field"><label for="splitPerson">' +
+      (devo ? "De quem você recebeu" : "Dividida com") +
+      "</label>" +
       '<input id="splitPerson" name="splitPerson" list="splitPessoas" autocomplete="off" ' +
-      'placeholder="Nome (ex.: Bete)" value="' + esc(sel) + '">' +
+      'placeholder="' + (devo ? "Nome de quem enviou" : "Nome (ex.: Bete)") +
+      '" value="' + esc(sel) + '">' +
       '<datalist id="splitPessoas">' +
       nomes.map((p) => '<option value="' + esc(p) + '"></option>').join("") +
       "</datalist></div>" +
       '<div class="split-prev" id="splitPrev"></div>' +
-      '<div class="hint">O lançamento fica com o valor <b>inteiro</b> — é o que saiu da sua ' +
-      "carteira — e a metade dela vira cobrança em <b>👥 Terceiros</b>, no mesmo mês.</div>" +
+      '<div class="hint">' +
+      (devo
+        ? "Esse lançamento é só a <b>sua metade</b> — a outra metade fica como sua dívida " +
+          "em <b>👥 Terceiros → 💸 Devo</b>, no mesmo mês."
+        : "O lançamento fica com o valor <b>inteiro</b> — é o que saiu da sua " +
+          "carteira — e a metade dela vira cobrança em <b>👥 Terceiros</b>, no mesmo mês.") +
+      "</div>" +
       "</div></div>"
     );
   }
@@ -2249,10 +2437,17 @@
     const nome =
       String((form.splitPerson && form.splitPerson.value) || "").trim() || "a outra pessoa";
     const bruto = parseMoney(form.amount ? form.amount.value : "");
-    const metade = bruto ? Math.round(bruto / 2) : 0;
-    prev.innerHTML = bruto
-      ? "<b>" + esc(nome) + " deve " + fmt(metade) + "</b> · você fica com " + fmt(bruto - metade)
-      : "Informe o valor para ver quanto cada um paga";
+    const txId = form.dataset.id;
+    const devo = txId ? splitDevo(txId, splitDoTx(txId)) : false;
+    if (!bruto) {
+      prev.innerHTML = "Informe o valor para ver quanto cada um paga";
+      return;
+    }
+    /* divisão recebida: o valor do campo JÁ é a minha metade */
+    prev.innerHTML = devo
+      ? "<b>você deve " + fmt(bruto) + " para " + esc(nome) + "</b> · essa é a sua parte"
+      : "<b>" + esc(nome) + " deve " + fmt(Math.round(bruto / 2)) + "</b> · você fica com " +
+        fmt(bruto - Math.round(bruto / 2));
   }
 
   /* cria/atualiza/apaga o registro de cobrança junto com o lançamento */
@@ -2267,7 +2462,10 @@
     }
     const nome = String((form.splitPerson && form.splitPerson.value) || "").trim();
     if (!nome || base.amount <= 0) return "";
-    const metade = Math.round(base.amount / 2);
+    /* v1.16.0: divisão RECEBIDA — o lançamento já é só a minha metade,
+       então a dívida vale o valor INTEIRO (não divide de novo) */
+    const devo = splitDevo(txId, vinc);
+    const metade = devo ? base.amount : Math.round(base.amount / 2);
     const patch = {
       person: nome,
       amount: metade,
@@ -2275,9 +2473,12 @@
       splitOf: txId,
       note: base.note || ""
     };
+    if (devo) patch.dir = "devo";
     if (vinc) Store.updateThird(vinc.id, patch);
     else Store.addThird(Object.assign({ split: true, status: "open" }, patch));
-    return "🤝 " + nome + " deve " + fmt(metade);
+    return devo
+      ? "💸 você deve " + fmt(metade) + " para " + nome
+      : "🤝 " + nome + " deve " + fmt(metade);
   }
 
   function txSheet(id) {
@@ -3192,7 +3393,10 @@
     const d = String(q.d || "").replace(/[<>]/g, "").slice(0, 80);
     /* v1.14.0: 4 últimos números do cartão, quando o remetente trouxe */
     const cf = String(q.cf || "").replace(/\D/g, "").slice(0, 4);
-    return { v: v, dt: dt, p: p, d: d, cf: cf };
+    /* v1.16.0: sp=1 → o link é de CONTA DIVIDIDA. Quem enviou pagou a
+       conta inteira: a outra metade é o que EU devo para ele. */
+    const sp = q.sp === "1" || q.sp === "true";
+    return { v: v, dt: dt, p: p, d: d, cf: cf, sp: sp };
   }
 
   /* aceita "receber?v=.." (com dados), "/receber?v=.." (como vem no link
@@ -3778,12 +3982,17 @@
       const t = Store.thirdItem(el.dataset.id);
       if (!t) return;
       const paid = t.status === "paid";
+      const devo = t.dir === "devo";
       Store.updateThird(t.id, {
         status: paid ? "open" : "paid",
         paidAt: paid ? null : today()
       });
       render();
-      toast(paid ? "Voltou para 'a devolver'" : "Marcado como devolvido ✓");
+      toast(
+        paid
+          ? devo ? "Voltou para 'eu devo'" : "Voltou para 'a devolver'"
+          : devo ? "Pago ✓ — dívida acertada" : "Marcado como devolvido ✓"
+      );
     },
     /* marca VÁRIOS de uma vez (com desfazer) */
     "td-paid-all"() {
@@ -3809,6 +4018,37 @@
           });
         },
         "Marcar todos"
+      );
+    },
+    /* v1.16.0 — trocar para a visão "💸 Devo" (aviso no topo do Terceiros) */
+    "td-devo-view"() {
+      state.thirdView = "devo";
+      render();
+    },
+    "td-view-mes"() {
+      state.thirdView = "mes";
+      render();
+    },
+    /* v1.16.0 — acertar o mês inteiro de uma vez (contas divididas) */
+    "td-pay-all"() {
+      const alvos = devoAlvoMassa();
+      if (!alvos.length) return;
+      const total = alvos.reduce((s, t) => s + t.amount, 0);
+      askConfirm(
+        "Pagar tudo em " + monthLabel(state.month) + "?",
+        alvos.length + " conta(s) dividida(s) · " + fmt(total) +
+          " passam a \"Pago\". Você pode desfazer logo em seguida.",
+        () => {
+          const antes = alvos.map((t) => ({ id: t.id, paidAt: t.paidAt || null }));
+          alvos.forEach((t) => Store.updateThird(t.id, { status: "paid", paidAt: today() }));
+          render();
+          toast(alvos.length + " dívida(s) acertada(s) ✓", () => {
+            antes.forEach((a) => Store.updateThird(a.id, { status: "open", paidAt: a.paidAt }));
+            render();
+            toast("Marcação desfeita ✓");
+          });
+        },
+        "Paguei todos"
       );
     },
     "del-third"(el) {
@@ -4450,7 +4690,57 @@
     render();
   }
 
+  /* v1.16.0 — CONFIRMAR UMA CONTA DIVIDIDA RECEBIDA (link com sp=1).
+     Cria OS DOIS registros de uma vez:
+       1. lançamento de SAÍDA com a SUA metade (é o que sai da carteira),
+          já identificado por `splitDir` — a pill 🤝 aparece na lista;
+       2. registro em Terceiros com a OUTRA metade, `dir: "devo"` — o que
+          VOCÊ deve para quem enviou, ligado ao lançamento por `splitOf`.
+     Sem cartão: a fatura nunca conta duas vezes a mesma conta. */
+  function salvarDivisao(form, fd) {
+    const amount = parseMoney(fd.get("amount"));
+    const person = String(fd.get("person") || "").trim();
+    if (!person) return toast("Informe de quem você recebeu a conta");
+    if (amount <= 0) return toast("Informe o valor da sua metade");
+    const data = fd.get("date") || today();
+    const note = String(fd.get("note") || "").trim();
+    const cats = Store.categories("out");
+    const catId = fd.get("catId") || (cats.length ? cats[0].id : null);
+    const novo = Store.addTx({
+      type: "out",
+      amount,
+      date: data,
+      catId: catId,
+      note: note || "Conta dividida",
+      cardId: null,
+      /* conta padrão: a saída da sua metade sai do caixa normal */
+      accId: Store.defaultAccId(),
+      splitDir: "devo"
+    });
+    Store.addThird({
+      person: person,
+      amount: amount,
+      date: data,
+      note: note,
+      dir: "devo",
+      splitOf: novo.id,
+      split: true,
+      status: "open"
+    });
+    /* o registro é datado no dia da conta — abre o app no mês certo */
+    state.month = String(data).slice(0, 7);
+    state.qr = null;
+    state.qrRaw = "";
+    toast(
+      "🍽️ Divisão registrada · sua metade " + fmt(amount) +
+        " nos lançamentos · 💸 você deve " + fmt(amount) + " para " + person
+    );
+    go("third");
+  }
+
   function saveThird(form, fd) {
+    /* link dividido (v1.16.0): não é gasto de terceiro — é a sua parte */
+    if (form.dataset.split === "1") return salvarDivisao(form, fd);
     const amount = parseMoney(fd.get("amount"));
     const person = String(fd.get("person") || "").trim();
     if (!person) return toast("Informe quem comprou");

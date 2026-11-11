@@ -121,7 +121,7 @@ Abra `http://localhost:8080` no PC. Pelo celular (mesma rede Wi-Fi):
 | 🔢 Parcelamento | Compra parcelada vira um lançamento por mês (1/3, 2/3...) — o seletor **Valor total / Valor da parcela** divide o preço para você, e o campo **"Já paguei"** cria só as parcelas restantes, rotuladas **4/12 … 12/12** |
 | 📈 Onde entrou o dinheiro | Ranking das **entradas** por categoria com % do total — é ali que aparece quanto rendeu o cofrinho |
 | 👥 Terceiros | **Menu de visão 📅 mês · 📊 resumo geral · 👤 por pessoa**, **filtro por pessoa no mês**, **✅ marcar todos como devolvidos de uma vez (com ↩ desfazer)**, filtro por mês (‹ ›), quem comprou **com o seu cartão**, **parcelado (n/total + já paguei)**, quanto, e se já devolveu, e **🍽️ contas divididas (iFood etc.)** com resumo do mês |
-| 🤝 Contas divididas | Dentro do lançamento: marca **"essa conta foi dividida"**, o app lança o valor **inteiro** e cobra **a metade da outra pessoa** em Terceiros — no fim do mês é um toque em **"Marcar todos como devolvidos"** |
+| 🤝 Contas divididas | Dentro do lançamento: marca **"essa conta foi dividida"**, o app lança o valor **inteiro** e cobra **a metade da outra pessoa** em Terceiros — no fim do mês é um toque em **"Marcar todos como devolvidos"**. **Ao receber o link da divisão**: sua metade vira lançamento e a outra metade aparece em **💸 Devo** (v1.16.0) |
 | 📊 Relatórios | Gráfico de 6 meses, ranking de categorias, médias, **filtro por categoria (com detalhe mês a mês)** e **⚖️ comparação de dois meses lado a lado** |
 | 🎯 Orçamento | **Limite por categoria no mês** (ex.: R$ 800 no mercado) com barra de progresso e **aviso quando chega perto ou estoura** |
 | 🔁 Contas fixas | Aluguel, luz, internet, assinaturas **e também entradas** (salário, rendimento): cadastro uma vez e o app **lança sozinho todo mês**, no dia marcado + lembrete de vencimento de fatura |
@@ -745,6 +745,47 @@ total está escrito em dois lugares.
 > uma compra datada dia 25 → ela aparece na lista com o pill `comp. 25/09` e
 > no mês do vencimento. Depois toque em **📤 Compartilhar com terceiro** e veja
 > o `cf=` no link.
+
+### 💸 Devo — receber a sua parte da divisão (v1.16.0)
+
+A v1.15.0 cuidou de **quem paga**. Esta versão cuida de **quem recebe**:
+a outra pessoa pagou o iFood inteiro, manda o link e você acerta a sua
+parte sem digitação dupla.
+
+**Como funciona:**
+
+1. Ela toca em **📤 Compartilhar** no lançamento dividido — o link já nasce
+   como **divisão** (`sp=1`), com o valor **total** da conta.
+2. Você toca no link (ou cola em **📥 Receber gasto**) e abre a tela
+   **🍽️ Conta dividida**: mostra o total, a **sua metade** pré-preenchida,
+   a data e a descrição. Você só confirma — e digita **de quem recebeu**.
+3. Ao tocar em **✅ Adicionar divisão** entram **dois registros de uma vez**:
+   - um **lançamento de saída** com a **sua metade** nos seus **Lançamentos**,
+     já identificado com o pill **`💸 Bete R$ 30,00`** (título "Você deve");
+   - a **outra metade** em **👥 Terceiros**, com **`dir: devo`** — ou seja,
+     **o que você deve para ela**, ligada ao lançamento pelo mesmo `splitOf`.
+4. **No Terceiros** aparece um card vermelho no topo
+   ***"💸 Devo neste mês — R$ 30,00 · 1 conta(s) dividida(s) com Bete"***
+   e uma opção nova no menu **Ver**: **💸 Devo · o que eu devo**.
+5. Na tela **💸 Devo** você vê só as suas dívidas, com **✓ em cada linha** e
+   o botão **✅ Paguei todos (n)** — no fim do mês, um toque acerta tudo
+   (com ↩ desfazer).
+
+**O que NÃO mudou (de propósito):**
+
+- O **"A receber"** do Painel e de todo o Terceiros **não soma** os registros
+  `devo` — senão a sua dívida apareceria como dinheiro a seu favor.
+- **Marcar como pago não cria lançamento**: a sua saída já entrou no
+  recebimento, então o Caixa não conta o gasto **duas vezes**.
+- A cobrança recebida **não tem cartão** → a fatura continua certa.
+- O **PDF do relatório** também ignora `devo` na seção "Gastos de terceiros"
+  e no "A receber".
+
+> 🔎 Para conferir: em um lançamento dividido toque em **📤 Compartilhar**,
+> copie o link e abra ele no **seu** app (ou mande para a pessoa e abra do
+> seu lado). Confira a tela 🍽️ → **✅ Adicionar divisão** → o lançamento com
+> o pill `💸` nos Lançamentos e o card vermelho **💸 Devo** no Terceiros.
+> Toque em **✓** e veja a dívida sumir (dá para desfazer).
 
 ### 🍽️ Contas divididas — iFood com outra pessoa (v1.15.0)
 
